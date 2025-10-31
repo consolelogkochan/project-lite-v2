@@ -24,6 +24,14 @@
             <x-input-error :messages="$errors->get('password')" class="mt-2" />
         </div>
 
+        {{-- パスワード表示チェックボックスを追加 --}}
+        <div class="block mt-2">
+            <label for="show_password_login" class="inline-flex items-center">
+                <input id="show_password_login" type="checkbox" class="rounded dark:bg-gray-900 border-gray-300 dark:border-gray-700 text-indigo-600 shadow-sm focus:ring-indigo-500 dark:focus:ring-indigo-600 dark:focus:ring-offset-gray-800" onclick="togglePasswordVisibility('password', null, this)">
+                <span class="ms-2 text-sm text-gray-600 dark:text-gray-400">{{ __('Show Password') }}</span>
+            </label>
+        </div>
+
         <!-- Remember Me -->
         <div class="block mt-4">
             <label for="remember_me" class="inline-flex items-center">
@@ -45,3 +53,22 @@
         </div>
     </form>
 </x-guest-layout>
+
+<script>
+    function togglePasswordVisibility(passwordFieldId, confirmationFieldId, checkbox) {
+        const passwordField = document.getElementById(passwordFieldId);
+        const confirmationField = confirmationFieldId ? document.getElementById(confirmationFieldId) : null;
+
+        if (checkbox.checked) {
+            passwordField.type = 'text';
+            if (confirmationField) {
+                confirmationField.type = 'text';
+            }
+        } else {
+            passwordField.type = 'password';
+            if (confirmationField) {
+                confirmationField.type = 'password';
+            }
+        }
+    }
+</script>

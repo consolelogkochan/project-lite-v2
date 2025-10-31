@@ -16,3 +16,10 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withExceptions(function (Exceptions $exceptions): void {
         //
     })->create();
+
+    $app->booted(function () {
+        Event::listen(
+            Illuminate\Auth\Events\Verified::class,
+            App\Listeners\UpdateUserStatusAfterVerification::class
+        );
+    });

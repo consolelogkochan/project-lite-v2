@@ -1,7 +1,10 @@
 <?php
 
+use App\Http\Controllers\NotificationController; // ファイルの先頭に追加
 use App\Http\Controllers\ProfileController;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Notification;
+use App\Notifications\TestNotification;
 
 Route::get('/', function () {
     return view('welcome');
@@ -18,3 +21,14 @@ Route::middleware('auth')->group(function () {
 });
 
 require __DIR__.'/auth.php';
+
+Route::get('/test-notification', function () {
+    Notification::send(Auth::user(), new TestNotification());
+    return 'Notification sent!';
+})->middleware('auth');
+
+// 通知取得用のAPIルート
+Route::middleware('auth')->group(function () {
+    Route::get('/notifications', [NotificationController::class, 'index'])->name('notifications.index');
+    Route::patch('/notifications/{notification}', [NotificationController::class, 'update'])->name('notifications.update'); // ← この行を追加
+});
