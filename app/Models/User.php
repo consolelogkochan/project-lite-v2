@@ -3,6 +3,7 @@
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
+use App\Models\Board;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -44,5 +45,21 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
         ];
+    }
+
+    /**
+     * ユーザーが所有するボード（作成者であるボード）
+     */
+    public function ownedBoards()
+    {
+        return $this->hasMany(Board::class, 'owner_id');
+    }
+
+    /**
+     * ユーザーが所属するすべてのボード（中間テーブル経由）
+     */
+    public function boards()
+    {
+        return $this->belongsToMany(Board::class, 'board_user')->withTimestamps();
     }
 }
