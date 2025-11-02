@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Models\Board;
 use App\Http\Requests\BoardStoreRequest;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\View\View;
+
 
 class BoardController extends Controller
 {
@@ -34,5 +36,19 @@ class BoardController extends Controller
 
         // ダッシュボードにリダイレクト
         return redirect()->route('dashboard');
+    }
+
+    /**
+     * 特定のボードを表示する
+     */
+    public function show(Board $board): View
+    {
+        // ボードに紐づくリストと、各リストに紐づくカードをすべて読み込む
+        $board->load(['lists.cards']);
+
+        // 'boards.show'というビューに、取得したボードのデータを渡す
+        return view('boards.show', [
+            'board' => $board
+        ]);
     }
 }

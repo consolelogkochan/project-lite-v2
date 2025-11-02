@@ -36,4 +36,6 @@ Route::middleware('auth')->group(function () {
 
 Route::middleware('auth')->group(function () {
     Route::post('/boards', [BoardController::class, 'store'])->name('boards.store');
+
+    Route::get('/boards/{board}', [BoardController::class, 'show'])->name('boards.show');
 });

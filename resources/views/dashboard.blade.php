@@ -22,7 +22,7 @@
             <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
                 {{-- ▼▼▼ ループ処理を追加 ▼▼▼ --}}
                 @foreach ($boards as $board)
-                    <a href="#" class="block h-32 rounded-md p-4 bg-cover bg-center shadow-md transition-all duration-200 ease-in-out hover:shadow-lg hover:-translate-y-1" style="background-color: {{ $board->background_color ?? '#6366F1' }};">
+                    <a href="{{ route('boards.show', $board) }}" class="block h-32 rounded-md p-4 bg-cover bg-center shadow-md transition-all duration-200 ease-in-out hover:shadow-lg hover:-translate-y-1" style="background-color: {{ $board->background_color ?? '#6366F1' }};">
                         <h3 class="font-bold text-lg text-white">{{ $board->title }}</h3>
                     </a>
                 @endforeach
