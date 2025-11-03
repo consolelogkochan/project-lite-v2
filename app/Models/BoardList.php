@@ -12,6 +12,18 @@ class BoardList extends Model
     use HasFactory;
 
     protected $table = 'lists';
+
+    /**
+     * The attributes that are mass assignable.
+     *
+     * @var array<int, string>
+     */
+    protected $fillable = [
+        'title',
+        'board_id',
+        'order',
+    ];
+    
     /**
      * このリストが属するボード
      */
