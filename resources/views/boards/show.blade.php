@@ -41,16 +41,23 @@
     <div class="p-4 sm:p-6 lg:p-8 h-full flex-grow overflow-x-auto" >
 
         <div class="flex space-x-4 h-full" x-sortable
-        @sortable-end.self="handleSortEnd($event.detail)" 
+        @sortable-end.self="handleSortEnd($event.detail)"
+        @card-sort-end.window="handleCardSortEnd($event.detail)" 
         x-data='{
             lists: [],
+            newCardForm: { // ★ 追加: カード追加フォームの状態
+             listId: null, // どのリストに追加するか
+             title: ""     // カードのタイトル
+            },
+            editingCardId: null, // ★ 追加: 編集中のカードID
+            editedCardTitle: "", // ★ 追加: 編集中のカードタイトル
             addingList: false,
             newListTitle: "",
             editingListId: null,
             editedListTitle: "",
 
             init() {
-                this.lists = @json($board->lists);
+                this.lists = @json($lists);
             },
 
             submitNewList() {
@@ -157,6 +164,240 @@
                     if (!response.ok) throw new Error("Failed to update list order.");
                 })
                 .catch(error => console.error("Error:", error));
+            },
+
+            // ★ ここからカードD&D用メソッドを追加
+            initCardSortable(el) {
+                // $el (this div) をSortableコンテナとして初期化
+                // (window.Sortable を bootstrap.js で設定済み)
+                new Sortable(el, {
+                    group: "cards", // "cards" グループ内のリスト間でD&Dを許可
+                    draggable: ".card-item", // .card-item クラスをドラッグ対象に
+                    animation: 150,
+                    onEnd: (event) => {
+                        // ドラッグ終了時にカスタムイベントを発火
+                        this.$dispatch("card-sort-end", {
+                            cardId: event.item.dataset.cardId,
+                            fromListId: event.from.dataset.listId,
+                            toListId: event.to.dataset.listId,
+                            newIndex: event.newIndex,
+                            oldIndex: event.oldIndex
+                        });
+                    }
+                });
+            },
+
+            handleCardSortEnd(detail) {
+                // detail = { cardId: "1", fromListId: "1", toListId: "2", newIndex: 0, oldIndex: 0 }
+
+                // 1. ローカルの Alpine.js データを即時更新 (UIの即時反映)
+
+                const fromList = this.lists.find(list => list.id == detail.fromListId);
+                const toList = this.lists.find(list => list.id == detail.toListId);
+                
+                if (!fromList || !toList) {
+                    console.error("Could not find source or destination list");
+                    return;
+                }
+
+                // 移動するカードのインデックスを oldIndex から特定
+                // (SortableJSが渡す cardId から探すほうが確実)
+                const cardIndex = fromList.cards.findIndex(card => card.id == detail.cardId);
+
+                if (cardIndex === -1) {
+                    console.error("Could not find card in source list");
+                    // D&Dライブラリとデータの不整合が起きた場合は、
+                    // サーバーからのデータで同期するためリロードを促す
+                    alert("An error occurred. Please reload the page.");
+                    return;
+                }
+
+                // fromList からカードを抜き取る
+                const [movedCard] = fromList.cards.splice(cardIndex, 1);
+
+                // toList の指定された位置 (newIndex) にカードを挿入
+                toList.cards.splice(detail.newIndex, 0, movedCard);
+
+                // ★★★ ここから挿入 (強制再描画ロジック) ★★★
+                // SortableJSによるDOM変更とAlpineのリアクティビティを同期させる
+                
+                // 1. 現在の (splice後の) this.lists の完全なコピーを作成
+                let updatedLists = Array.from(this.lists);
+                
+                // 2. this.lists を一度リセットして、Alpineに「変更」を強制通知
+                this.lists = []; 
+                
+                // 3. $nextTick (DOM更新が完了した後) で、コピーした配列を再セット
+                this.$nextTick(() => {
+                    this.lists = updatedLists;
+                });
+                // ★★★ 挿入ここまで ★★★
+
+                // 2. サーバーに新しい順序を送信 (API呼び出し)
+
+                // APIが要求する形式 [{id: 1, cards: [1, 2]}, {id: 2, cards: [3]}] にデータを整形
+                const listsPayload = updatedLists.map(list => {
+                    return {
+                        id: list.id,
+                        // 各リストの cards 配列から card の id だけを抽出
+                        cards: list.cards.map(card => card.id) 
+                    };
+                });
+
+                fetch("{{ route('cards.updateOrder') }}", { 
+                    method: "PATCH", 
+                    headers: {
+                        "Content-Type": "application/json", 
+                        "X-CSRF-TOKEN": document.querySelector("meta[name=\"csrf-token\"]").getAttribute("content")
+                    },
+                    body: JSON.stringify({
+                        lists: listsPayload 
+                    })
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error("Failed to update card order on server."); // "..."
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    // 成功 (特にUIでやることはないが、ログは残す)
+                    console.log("Card order updated successfully:", data.message);
+                })
+                .catch(error => {
+                    console.error("Error updating card order:", error); // "..."
+                    // ★ ユーザーにエラーを通知し、リロードを促す
+                    // （ローカルのUIとDBのデータが不整合になっている可能性が高いため）
+                    alert("An error occurred while saving the new order. Please reload the page to ensure data consistency.");
+                });
+            },
+            // ★ カードD&D用メソッドここまで
+
+            // ★ ここから追加 (文字列をダブルクォートに変更)
+            submitNewCard(list) {
+                if (this.newCardForm.title.trim() === "") {
+                    // タイトルが空ならフォームを閉じるだけ
+                    this.newCardForm.listId = null;
+                    this.newCardForm.title = "";
+                    return;
+                }
+
+                fetch(`/lists/${list.id}/cards`, {
+                    method: "POST", // "..." に変更
+                    headers: {
+                        "Content-Type": "application/json", // "..." に変更
+                        // "..." と \"...\" に変更
+                        "X-CSRF-TOKEN": document.querySelector("meta[name=\"csrf-token\"]").getAttribute("content") 
+                    },
+                    body: JSON.stringify({
+                        title: this.newCardForm.title
+                    })
+                })
+                .then(response => {
+                    if (response.status === 422) { // バリデーションエラー
+                        alert("Card title is required or too long."); // "..." に変更
+                        throw new Error("Validation failed"); // "..." に変更
+                    }
+                    if (!response.ok) {
+                        throw new Error("Failed to create card."); // "..." に変更
+                    }
+                    return response.json();
+                })
+                .then(newCard => {
+                    // ★ 成功時の処理
+                    // 該当するリストの cards 配列に新しいカードを追加
+                    list.cards.push(newCard); 
+
+                    // フォームをリセット
+                    this.newCardForm.listId = null;
+                    this.newCardForm.title = ""; // "..." に変更
+                })
+                .catch(error => {
+                    console.error("Error creating card:", error); // "..." に変更
+                    // バリデーション失敗以外のエラー
+                    if (error.message !== "Validation failed") { // "..." に変更
+                        alert("An error occurred while adding the card."); // "..." に変更
+                    }
+                });
+            },
+
+            updateCardTitle(card) {
+                const newTitle = this.editedCardTitle.trim();
+
+                // タイトルが空、または変更がない場合は、編集をキャンセルするだけ
+                if (newTitle === "" || newTitle === card.title) {
+                    this.editingCardId = null;
+                    this.editedCardTitle = "";
+                    return;
+                }
+
+                fetch(`/cards/${card.id}`, {
+                    method: "PATCH", // "..."
+                    headers: {
+                        "Content-Type": "application/json", // "..."
+                        "X-CSRF-TOKEN": document.querySelector("meta[name=\"csrf-token\"]").getAttribute("content")
+                    },
+                    body: JSON.stringify({ title: newTitle })
+                })
+                .then(response => {
+                    if (response.status === 422) {
+                        alert("Card title is required or too long."); // "..."
+                        throw new Error("Validation failed"); // "..."
+                    }
+                    if (!response.ok) {
+                        throw new Error("Failed to update card."); // "..."
+                    }
+                    return response.json();
+                })
+                .then(updatedCard => {
+                    // ★ 成功時の処理
+                    // Alpine.js のリアクティブなデータを更新
+                    card.title = updatedCard.title; 
+                    
+                    // 編集状態をリセット
+                    this.editingCardId = null;
+                    this.editedCardTitle = "";
+                })
+                .catch(error => {
+                    console.error("Error updating card:", error);
+                    if (error.message !== "Validation failed") {
+                        alert("An error occurred while updating the card."); // "..."
+                    }
+                    // エラーが起きても編集フォームを閉じる
+                    this.editingCardId = null;
+                    this.editedCardTitle = "";
+                });
+            },
+
+            deleteCard(card, list) {
+                // ユーザーに確認
+                if (!confirm("Are you sure you want to delete this card: \"" + card.title + "\"?")) {
+                    return;
+                }
+
+                fetch(`/cards/${card.id}`, {
+                    method: "DELETE", // "..."
+                    headers: {
+                        "Content-Type": "application/json", // "..."
+                        "X-CSRF-TOKEN": document.querySelector("meta[name=\"csrf-token\"]").getAttribute("content")
+                    }
+                })
+                .then(response => {
+                    if (!response.ok) { // 204 No Content も .ok は true になる
+                        throw new Error("Failed to delete card."); // "..."
+                    }
+                    
+                    // ★ 成功時の処理
+                    // UIからカードを削除 (list.cards 配列から該当 card を除去)
+                    const index = list.cards.findIndex(c => c.id === card.id);
+                    if (index > -1) {
+                        list.cards.splice(index, 1);
+                    }
+                })
+                .catch(error => {
+                    console.error("Error deleting card:", error); // "..."
+                    alert("An error occurred while deleting the card."); // "..."
+                });
             }
         }'
         x-init="init()" {{-- ← 3. x-initディレクティブを追加 --}}
@@ -202,32 +443,87 @@
                     </div>
 
                     {{-- カード一覧 --}}
-                    <div class="p-3 space-y-3 overflow-y-auto" style="max-height: calc(100vh - 250px);">
-                        {{-- ▼▼▼ PHPの@foreachをAlpine.jsの<template x-for>に変更 ▼▼▼ --}}
+                    {{-- ★ 変更点: SortableJS連携のため data-list-id と list-cards クラスを追加 --}}
+                    <div class="list-cards p-3 space-y-3 overflow-y-auto" 
+                        style="max-height: calc(100vh - 250px);"
+                        :data-list-id="list.id"
+                        x-init="initCardSortable($el)">
+                        
                         <template x-for="card in list.cards" :key="card.id">
-                            <div class="bg-white dark:bg-gray-800 rounded-md shadow p-3">
-                                <p class="text-sm text-gray-800 dark:text-gray-100" x-text="card.title"></p>
+                            {{-- ★ 変更点: relative と group を追加 --}}
+                            <div class="card-item bg-white dark:bg-gray-800 rounded-md shadow hover:bg-gray-100 dark:hover:bg-gray-700 relative group"
+                                :data-card-id="card.id">
+
+                                <div x-show="editingCardId !== card.id" class="p-3">
+                                    {{-- ★ 変更点: @click を <p> タグに移動 --}}
+                                    <p @click="editingCardId = card.id; editedCardTitle = card.title; $nextTick(() => $refs['cardTitleInput_' + card.id].focus())"
+                                    class="text-sm text-gray-800 dark:text-gray-100 cursor-pointer" 
+                                    x-text="card.title">
+                                    </p>
+                                    
+                                    {{-- ★ ここから追加: 削除ボタン (ホバーで表示) --}}
+                                    <button @click.prevent="deleteCard(card, list)"
+                                            class="absolute top-1 right-1 p-1 text-gray-400 hover:text-red-600 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                                        </svg>
+                                    </button>
+                                    {{-- ★ 追加ここまで --}}
+                                </div>
+
+                                <div x-show="editingCardId === card.id" x-cloak class="p-3">
+                                    <form @submit.prevent="updateCardTitle(card)">
+                                        <textarea :x-ref="'cardTitleInput_' + card.id"
+                                                x-model="editedCardTitle"
+                                                @keydown.enter.prevent="$event.target.form.requestSubmit()"
+                                                @keydown.escape.prevent="editingCardId = null; editedCardTitle = ''"
+                                                @blur="updateCardTitle(card)"
+                                                class="block w-full text-sm rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 focus:border-indigo-500 focus:ring-indigo-500 shadow-sm"
+                                                rows="3"></textarea>
+                                    </form>
+                                </div>
                             </div>
                         </template>
+                    </div>
 
-                        {{-- 「カードを追加」UI (x-dataを削除し、親のAlpine.jsを参照) --}}
-                        <div x-data="{ addingCard: false }" class="mt-2">
-                            <button x-show="!addingCard" @click="addingCard = true; $nextTick(() => $refs.cardTitleInput.focus())"
-                                    class="w-full p-2 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-500 dark:text-gray-400 text-sm font-medium text-left">
-                                + Add a card
-                            </button>
-                            <form x-show="addingCard" @submit.prevent="alert('Card creation logic goes here!')" class="space-y-2">
-                                <textarea x-ref="cardTitleInput" rows="3" placeholder="Enter a title for this card..."
-                                          class="block w-full text-sm rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 focus:border-indigo-500 focus:ring-indigo-500 shadow-sm"></textarea>
-                                <div class="flex items-center space-x-2">
-                                    <x-primary-button type="submit">Add card</x-primary-button>
-                                    <button @click="addingCard = false" type="button" class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-white">
-                                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                        {{-- 「カードを追加」UI (トップレベルの newCardForm を参照) --}}
+                        {{-- リストフッター --}}
+                        <div class="list-footer p-3 border-t border-gray-200 dark:border-gray-600">
+                            <div class="mt-2">
+
+                                <div x-show="newCardForm.listId !== list.id">
+                                    <button @click="newCardForm.listId = list.id; $nextTick(() => $refs['newCardTitleInput_' + list.id].focus())"
+                                            class="w-full p-2 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-500 dark:text-gray-400 text-sm font-medium text-left">
+                                        + Add a card
                                     </button>
                                 </div>
-                            </form>
+
+                                <div x-show="newCardForm.listId === list.id" x-cloak>
+                                    <form @submit.prevent="submitNewCard(list)" 
+                                        class="space-y-2">
+                                        
+                                        {{-- ★ 変更点: x-model と :x-ref を動的に設定 --}}
+                                        <textarea x-model="newCardForm.title"
+                                                :x-ref="'newCardTitleInput_' + list.id"
+                                                @keydown.escape.prevent="newCardForm.listId = null; newCardForm.title = ''"
+                                                @keydown.enter.prevent="$event.target.form.requestSubmit()"
+                                                class="block w-full text-sm rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 focus:border-indigo-500 focus:ring-indigo-500 shadow-sm"
+                                                rows="3" 
+                                                placeholder="Enter a title for this card..."></textarea>
+                                        
+                                        <div class="flex items-center space-x-2">
+                                            <x-primary-button type="submit">Add card</x-primary-button>
+                                            <button @click="newCardForm.listId = null; newCardForm.title = ''"
+                                                    type="button"
+                                                    class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-white">
+                                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                                            </button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
                         </div>
-                    </div>
+                    
                 </div>
             </template>
             {{-- ▲▲▲ Alpine.jsのループここまで ▲▲▲ --}}

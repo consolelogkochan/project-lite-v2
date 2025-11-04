@@ -9,7 +9,18 @@ use App\Models\BoardList;
 class Card extends Model
 {
     use HasFactory;
-    
+
+    /**
+     * The attributes that are mass assignable.
+     *
+     * @var array<int, string>
+     */
+    protected $fillable = [
+        'board_list_id',
+        'title',
+        'order',
+    ];
+
     /**
      * このカードが属するリスト
      */

@@ -6,6 +6,10 @@ window.axios.defaults.headers.common['X-Requested-With'] = 'XMLHttpRequest';
 import Alpine from 'alpinejs';
 import Sortable from 'sortablejs';
 
+window.Sortable = Sortable; // ★ この行を追加
+
+window.Alpine = Alpine;
+
 // Alpine.jsにSortableJSを連携させる
 Alpine.directive('sortable', (el, { expression }, { evaluate }) => {
 

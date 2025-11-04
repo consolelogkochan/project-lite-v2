@@ -8,6 +8,7 @@ use App\Http\Controllers\NotificationController;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Notification;
 use App\Notifications\TestNotification;
+use App\Http\Controllers\CardController;
 
 /*
 |--------------------------------------------------------------------------
@@ -41,6 +42,18 @@ Route::middleware('auth')->group(function () {
     Route::patch('/lists/update-order', [ListController::class, 'updateOrder'])->name('lists.updateOrder');
     Route::patch('/lists/{list}', [ListController::class, 'update'])->name('lists.update');
     Route::delete('/lists/{list}', [ListController::class, 'destroy'])->name('lists.destroy');
+
+    // 特定のリストにカードを追加する
+    Route::post('/lists/{list}/cards', [CardController::class, 'store'])->name('cards.store');
+    
+    // カードのD&D（順序・所属リスト）を更新
+    // (ワイルドカード {card} よりも「上」に定義する)
+    Route::patch('/cards/update-order', [CardController::class, 'updateOrder'])->name('cards.updateOrder');
+
+    // カードの更新と削除 (ワイルドカード)
+    Route::patch('/cards/{card}', [CardController::class, 'update'])->name('cards.update');
+    Route::delete('/cards/{card}', [CardController::class, 'destroy'])->name('cards.destroy');
+    
 
     // 通知 (API)
     Route::get('/notifications', [NotificationController::class, 'index'])->name('notifications.index');

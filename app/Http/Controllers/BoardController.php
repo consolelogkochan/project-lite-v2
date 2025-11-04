@@ -43,12 +43,18 @@ class BoardController extends Controller
      */
     public function show(Board $board): View
     {
-        // ボードに紐づくリストと、各リストに紐づくカードをすべて読み込む
-        $board->load(['lists.cards']);
+        // ★ 変更点: $board->load() の代わりに、
+        // $lists 変数を明示的に作成する
 
-        // 'boards.show'というビューに、取得したボードのデータを渡す
+        // ボードに属するリストを 'order' 順で取得
+        // 同時に、各リストに属するカード (BoardListモデルで 'order' 順に定義済み) も
+        // Eager Loading (with('cards')) する
+        $lists = $board->lists()->with('cards')->orderBy('order')->get();
+
+        // 'boards.show' ビューに、 $board と $lists の両方を渡す
         return view('boards.show', [
-            'board' => $board
+            'board' => $board,
+            'lists' => $lists, // ★ 変更点: $lists を追加
         ]);
     }
 }
