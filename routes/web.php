@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Notification;
 use App\Notifications\TestNotification;
 use App\Http\Controllers\CardController;
+use App\Http\Controllers\CommentController;
 
 /*
 |--------------------------------------------------------------------------
@@ -54,6 +55,14 @@ Route::middleware('auth')->group(function () {
     Route::patch('/cards/{card}', [CardController::class, 'update'])->name('cards.update');
     Route::delete('/cards/{card}', [CardController::class, 'destroy'])->name('cards.destroy');
     
+    // ★ ここから追加: カード詳細（リレーション含む）を取得
+    Route::get('/cards/{card}', [CardController::class, 'show'])->name('cards.show');
+
+    // ★ ここから追加: カードにコメントを投稿
+    Route::post('/cards/{card}/comments', [CommentController::class, 'store'])->name('comments.store');
+    // ★ ここから追加: コメントの更新と削除
+    Route::patch('/comments/{comment}', [CommentController::class, 'update'])->name('comments.update');
+    Route::delete('/comments/{comment}', [CommentController::class, 'destroy'])->name('comments.destroy');
 
     // 通知 (API)
     Route::get('/notifications', [NotificationController::class, 'index'])->name('notifications.index');

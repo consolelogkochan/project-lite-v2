@@ -43,6 +43,11 @@
         <div class="flex space-x-4 h-full" x-sortable
         @sortable-end.self="handleSortEnd($event.detail)"
         @card-sort-end.window="handleCardSortEnd($event.detail)" 
+        @submit-card-title-update.window="updateCardTitleFromModal()"
+        @submit-card-description-update.window="updateCardDescriptionFromModal()"
+        @submit-new-comment.window="submitNewCommentFromModal($event.detail)"
+        @submit-delete-comment.window="deleteCommentFromModal($event.detail)"
+        @submit-edit-comment.window="updateCommentFromModal($event.detail)"
         x-data='{
             lists: [],
             newCardForm: { // ★ 追加: カード追加フォームの状態
@@ -51,6 +56,14 @@
             },
             editingCardId: null, // ★ 追加: 編集中のカードID
             editedCardTitle: "", // ★ 追加: 編集中のカードタイトル
+            selectedCardId: null, // 現在開いているカードのID
+            selectedCardData: null, // APIから取得した詳細データ
+            editingCardTitleModal: false, // モーダル内のタイトルを編集中か
+            editedCardTitleModal: "", // モーダル内の編集用タイトル
+            editingCardDescription: false, // 説明文を編集中か
+            editedCardDescription: "", // 編集用の説明文
+            editingCommentId: null, // 編集中のコメントID
+            editedCommentContent: "", // 編集用のコメント本文
             addingList: false,
             newListTitle: "",
             editingListId: null,
@@ -59,6 +72,49 @@
             init() {
                 this.lists = @json($lists);
             },
+
+            // ★ ここから追加: selectedCardId を監視
+            watchSelectedCard() {
+                this.$watch("selectedCardId", (newId) => {
+                    // モーダルが開いた時 (IDがセットされた時)
+                    if (newId !== null) {
+                        // 1. まずデータをリセット (ローディング表示のため)
+                        this.selectedCardData = null; 
+                        
+                        // 2. APIを叩いて詳細データを取得
+                        fetch(`/cards/${newId}`)
+                            .then(response => {
+                                if (!response.ok) {
+                                    throw new Error("Failed to fetch card details.");
+                                }
+                                return response.json();
+                            })
+                            .then(data => {
+                                // 取得したデータをセット
+                                this.selectedCardData = data; 
+                            })
+                            .catch(error => {
+                                console.error("Error fetching card details:", error);
+                                alert("Failed to load card details. Please close the modal and try again.");
+                                // エラー時はモーダルを閉じる
+                                this.selectedCardId = null; 
+                            });
+                    } 
+                    // モーダルが閉じた時 (newId が null になった時)
+                    else {
+                        // データをクリア
+                        this.selectedCardData = null; 
+                        // ★ ここから追加: 編集状態もリセット
+                        this.editingCardTitleModal = false;
+                        this.editedCardTitleModal = "";
+                        this.editingCardDescription = false;
+                        this.editedCardDescription = "";
+                        this.editingCommentId = null;
+                        this.editedCommentContent = "";
+                    }
+                });
+            },
+            // ★ 追加ここまで
 
             submitNewList() {
                 fetch("{{ route('lists.store', $board) }}", {
@@ -369,6 +425,178 @@
                 });
             },
 
+            updateCardDescriptionFromModal() {
+                // 編集モードでないなら何もしない
+                if (!this.editingCardDescription) return;
+
+                const newDescription = this.editedCardDescription.trim();
+                const card = this.selectedCardData;
+
+                // 変更がない場合は、編集をキャンセルするだけ
+                // (DBの description は null の可能性があるため、|| "" で空文字に統一して比較)
+                if (newDescription === (card.description || "")) {
+                    this.editingCardDescription = false;
+                    return;
+                }
+
+                fetch(`/cards/${card.id}`, {
+                    method: "PATCH",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-CSRF-TOKEN": document.querySelector("meta[name=\"csrf-token\"]").getAttribute("content")
+                    },
+                    body: JSON.stringify({ description: newDescription }) // description を送信
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error("Failed to update card description.");
+                    }
+                    return response.json();
+                })
+                .then(updatedCard => {
+                    // ★ 成功時の処理 ★
+                    
+                    // 1. モーダル内のデータを更新
+                    this.selectedCardData.description = updatedCard.description; 
+                    
+                    // 2. メインボード（背景）のデータも更新 (同期のため)
+                    // (※説明文はカンバンボード一覧には表示されないが、
+                    // 将来的に使う可能性を考慮し同期させておく)
+                    const listIndex = this.lists.findIndex(l => l.id == updatedCard.board_list_id);
+                    if (listIndex > -1) {
+                        const cardIndex = this.lists[listIndex].cards.findIndex(c => c.id == updatedCard.id);
+                        if (cardIndex > -1) {
+                            this.lists[listIndex].cards[cardIndex].description = updatedCard.description;
+                        }
+                    }
+                    
+                    // 3. 編集状態をリセット
+                    this.editingCardDescription = false;
+                })
+                .catch(error => {
+                    console.error("Error updating card description:", error);
+                    alert("An error occurred while updating the card description.");
+                    this.editingCardDescription = false;
+                });
+            },
+
+            submitNewCommentFromModal(detail) {
+                // detail = { content: "...", card: {...}, callback: () => {} }
+                if (detail.content.trim() === "") return;
+
+                fetch(`/cards/${detail.card.id}/comments`, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-CSRF-TOKEN": document.querySelector("meta[name=\"csrf-token\"]").getAttribute("content")
+                    },
+                    body: JSON.stringify({ content: detail.content })
+                })
+                .then(response => {
+                    if (response.status === 422) {
+                        throw new Error("Comment content is required.");
+                    }
+                    if (!response.ok) {
+                        throw new Error("Failed to post comment.");
+                    }
+                    return response.json();
+                })
+                .then(newComment => {
+                    // ★ 成功時の処理 ★
+                    
+                    // 1. モーダル内のコメント配列の「先頭」に新しいコメントを追加
+                    // (CardController@show が latest() で取得するため、UIも先頭に追加)
+                    this.selectedCardData.comments.unshift(newComment);
+                    
+                    // 2. フォームをクリアする (コールバックを実行)
+                    detail.callback();
+                })
+                .catch(error => {
+                    console.error("Error posting comment:", error);
+                    alert("An error occurred while posting the comment.");
+                });
+            },
+
+            deleteCommentFromModal(detail) {
+                // detail = { comment: {...}, card: {...} }
+                if (!confirm("Are you sure you want to delete this comment?")) {
+                    return;
+                }
+
+                fetch(`/comments/${detail.comment.id}`, {
+                    method: "DELETE",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-CSRF-TOKEN": document.querySelector("meta[name=\"csrf-token\"]").getAttribute("content")
+                    }
+                })
+                .then(response => {
+                    if (response.status === 403) { // 403 Forbidden
+                        throw new Error("You do not have permission to delete this comment.");
+                    }
+                    if (!response.ok) { // 204 No Content も .ok は true
+                        throw new Error("Failed to delete comment.");
+                    }
+                    
+                    // ★ 成功時の処理 ★
+                    // モーダル内の comments 配列から該当コメントを削除
+                    const index = this.selectedCardData.comments.findIndex(c => c.id === detail.comment.id);
+                    if (index > -1) {
+                        this.selectedCardData.comments.splice(index, 1);
+                    }
+                })
+                .catch(error => {
+                    console.error("Error deleting comment:", error);
+                    alert(error.message || "An error occurred while deleting the comment.");
+                });
+            },
+
+            updateCommentFromModal(detail) {
+                // detail = { comment: {...}, content: "...", callback: () => {} }
+                const newContent = detail.content.trim();
+                
+                // (ボタン側で disabled にしているが、念のため)
+                if (newContent === "" || newContent === detail.comment.content) {
+                    detail.callback(); // フォームを閉じる
+                    return;
+                }
+
+                fetch(`/comments/${detail.comment.id}`, {
+                    method: "PATCH",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-CSRF-TOKEN": document.querySelector("meta[name=\"csrf-token\"]").getAttribute("content")
+                    },
+                    body: JSON.stringify({ content: newContent })
+                })
+                .then(response => {
+                    if (response.status === 403) {
+                        throw new Error("You do not have permission to edit this comment.");
+                    }
+                    if (!response.ok) {
+                        throw new Error("Failed to update comment.");
+                    }
+                    return response.json();
+                })
+                .then(updatedComment => {
+                    // ★ 成功時の処理 ★
+                    // モーダル内の comments 配列の該当コメントを更新
+                    const index = this.selectedCardData.comments.findIndex(c => c.id === updatedComment.id);
+                    if (index > -1) {
+                        this.selectedCardData.comments[index].content = updatedComment.content;
+                    }
+                    
+                    // フォームを閉じる (コールバックを実行)
+                    detail.callback();
+                })
+                .catch(error => {
+                    console.error("Error updating comment:", error);
+                    alert(error.message || "An error occurred while updating the comment.");
+                    // エラー時もフォームを閉じる
+                    detail.callback();
+                });
+            },
+
             deleteCard(card, list) {
                 // ユーザーに確認
                 if (!confirm("Are you sure you want to delete this card: \"" + card.title + "\"?")) {
@@ -398,9 +626,62 @@
                     console.error("Error deleting card:", error); // "..."
                     alert("An error occurred while deleting the card."); // "..."
                 });
+            },
+
+            updateCardTitleFromModal() {
+                // 編集モードでないなら何もしない
+                if (!this.editingCardTitleModal) return;
+
+                const newTitle = this.editedCardTitleModal.trim();
+                const card = this.selectedCardData; // APIから取得済みのデータ
+
+                // タイトルが空、または変更がない場合は、編集をキャンセルするだけ
+                if (newTitle === "" || newTitle === card.title) {
+                    this.editingCardTitleModal = false;
+                    return;
+                }
+
+                fetch(`/cards/${card.id}`, {
+                    method: "PATCH",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-CSRF-TOKEN": document.querySelector("meta[name=\"csrf-token\"]").getAttribute("content")
+                    },
+                    body: JSON.stringify({ title: newTitle })
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error("Failed to update card.");
+                    }
+                    return response.json();
+                })
+                .then(updatedCard => {
+                    // ★ 成功時の処理 ★
+                    
+                    // 1. モーダル内のデータを更新
+                    this.selectedCardData.title = updatedCard.title; 
+                    
+                    // 2. メインボード（背景）のデータも更新 (重要)
+                    const listIndex = this.lists.findIndex(l => l.id == updatedCard.board_list_id);
+                    if (listIndex > -1) {
+                        const cardIndex = this.lists[listIndex].cards.findIndex(c => c.id == updatedCard.id);
+                        if (cardIndex > -1) {
+                            this.lists[listIndex].cards[cardIndex].title = updatedCard.title;
+                        }
+                    }
+                    
+                    // 3. 編集状態をリセット
+                    this.editingCardTitleModal = false;
+                })
+                .catch(error => {
+                    console.error("Error updating card:", error);
+                    alert("An error occurred while updating the card.");
+                    // エラーが起きても編集フォームを閉じる
+                    this.editingCardTitleModal = false;
+                });
             }
         }'
-        x-init="init()" {{-- ← 3. x-initディレクティブを追加 --}}
+        x-init="init(); watchSelectedCard();"
         >
             {{-- ▼▼▼ PHPの@foreachをAlpine.jsの<template x-for>に変更 ▼▼▼ --}}
             <template x-for="list in lists" :key="list.id">
@@ -450,38 +731,27 @@
                         x-init="initCardSortable($el)">
                         
                         <template x-for="card in list.cards" :key="card.id">
-                            {{-- ★ 変更点: relative と group を追加 --}}
-                            <div class="card-item bg-white dark:bg-gray-800 rounded-md shadow hover:bg-gray-100 dark:hover:bg-gray-700 relative group"
-                                :data-card-id="card.id">
+                            {{-- ★ 変更点: div全体をモーダルを開くトリガーにする --}}
+                            <div @click="selectedCardId = card.id" {{-- 1. @click で selectedCardId をセット --}}
+                                 class="card-item bg-white dark:bg-gray-800 rounded-md shadow hover:bg-gray-100 dark:hover:bg-gray-700 relative group cursor-pointer" {{-- 2. cursor-pointer をここに移動 --}}
+                                 :data-card-id="card.id">
 
-                                <div x-show="editingCardId !== card.id" class="p-3">
-                                    {{-- ★ 変更点: @click を <p> タグに移動 --}}
-                                    <p @click="editingCardId = card.id; editedCardTitle = card.title; $nextTick(() => $refs['cardTitleInput_' + card.id].focus())"
-                                    class="text-sm text-gray-800 dark:text-gray-100 cursor-pointer" 
-                                    x-text="card.title">
+                                <div class="p-3">
+                                    {{-- 3. @click を削除 (親divに移動したため) --}}
+                                    <p class="text-sm text-gray-800 dark:text-gray-100" 
+                                       x-text="card.title">
                                     </p>
                                     
-                                    {{-- ★ ここから追加: 削除ボタン (ホバーで表示) --}}
-                                    <button @click.prevent="deleteCard(card, list)"
+                                    <button @click.prevent.stop="deleteCard(card, list)" {{-- 4. @click.prevent.stop を追加 --}}
                                             class="absolute top-1 right-1 p-1 text-gray-400 hover:text-red-600 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity z-10">
                                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
                                         </svg>
                                     </button>
-                                    {{-- ★ 追加ここまで --}}
                                 </div>
 
-                                <div x-show="editingCardId === card.id" x-cloak class="p-3">
-                                    <form @submit.prevent="updateCardTitle(card)">
-                                        <textarea :x-ref="'cardTitleInput_' + card.id"
-                                                x-model="editedCardTitle"
-                                                @keydown.enter.prevent="$event.target.form.requestSubmit()"
-                                                @keydown.escape.prevent="editingCardId = null; editedCardTitle = ''"
-                                                @blur="updateCardTitle(card)"
-                                                class="block w-full text-sm rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 focus:border-indigo-500 focus:ring-indigo-500 shadow-sm"
-                                                rows="3"></textarea>
-                                    </form>
-                                </div>
+                                {{-- 5. インライン編集フォーム (editingCardId) はすべて削除 --}}
+                                
                             </div>
                         </template>
                     </div>
@@ -547,6 +817,10 @@
                     </div>
                 </form>
             </div>
+            {{-- ★ ここから追加: カード詳細モーダル --}}
+            <x-card-detail-modal />
+            {{-- ★ 追加ここまで --}}
         </div>
     </div>
+
 </x-app-layout>

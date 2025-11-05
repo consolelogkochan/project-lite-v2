@@ -9,6 +9,7 @@ use App\Models\User;   // ★ 2. モデルのインポート
 use App\Models\Board;  // ★
 use App\Models\BoardList; // ★
 use App\Models\Card;   // ★
+use App\Models\Comment;
 
 class CardFunctionTest extends TestCase
 {
@@ -244,5 +245,211 @@ class CardFunctionTest extends TestCase
             'board_list_id' => $data['list2']->id,
             'order' => 1 // card2 が来たため 1 になった
         ]);
+    }
+
+    /**
+     * 認証済みユーザーはカードの詳細情報を取得できる
+     */
+    public function test_an_authenticated_user_can_get_card_details()
+    {
+        // 1. 準備 (Arrange)
+        // setUp() で $this->user, $this->list, $this->card は作成済み
+        // さらに $this->card に紐づくコメントを作成
+        $comment = Comment::factory()->create([
+            'card_id' => $this->card->id,
+            'user_id' => $this->user->id
+        ]);
+
+        // 2. 実行 (Act)
+        // 認証済みユーザーとして、カード詳細API (cards.show) にGETリクエスト
+        $response = $this->actingAs($this->user)->getJson(
+            route('cards.show', $this->card)
+        );
+
+        // 3. 検証 (Assert)
+        
+        // A. レスポンスの検証
+        $response->assertStatus(200) // 200 OK
+                 ->assertJson([
+                     'id' => $this->card->id,
+                     'title' => $this->card->title,
+                     
+                     // B. リレーション(list)が読み込まれているか
+                     'list' => [
+                         'id' => $this->list->id,
+                         'title' => $this->list->title
+                     ],
+
+                     // C. リレーション(comments)が読み込まれているか
+                     'comments' => [
+                         [ // 最初のコメント (配列になっている)
+                             'id' => $comment->id,
+                             'content' => $comment->content,
+                             
+                             // D. コメントのユーザー情報(アバターURL含む)が読み込まれているか
+                             'user' => [
+                                'id' => $this->user->id,
+                                'name' => $this->user->name,
+                                'avatar_url' => $this->user->avatar_url // $appends のテスト
+                             ]
+                         ]
+                     ]
+                 ]);
+    }
+
+    /**
+     * 認証済みユーザーはカードにコメントを投稿できる
+     */
+    public function test_an_authenticated_user_can_post_a_comment()
+    {
+        // 1. 準備 (Arrange)
+        // setUp() で $this->user (認証ユーザー) と $this->card (投稿先) は作成済み
+        $commentContent = 'This is a test comment.';
+
+        // 2. 実行 (Act)
+        // 認証済みユーザーとして、コメント投稿API (comments.store) にPOSTリクエスト
+        $response = $this->actingAs($this->user)->postJson(
+            route('comments.store', $this->card),
+            ['content' => $commentContent]
+        );
+
+        // 3. 検証 (Assert)
+        
+        // A. レスポンスの検証
+        $response->assertStatus(201) // 201 Created が返ってくる
+                 ->assertJson([
+                     'content' => $commentContent,
+                     'card_id' => $this->card->id,
+                     'user_id' => $this->user->id,
+                     // B. ユーザー情報(アバターURL含む)がネストされているか
+                     'user' => [
+                         'id' => $this->user->id,
+                         'avatar_url' => $this->user->avatar_url
+                     ]
+                 ]);
+
+        // C. データベースの検証
+        $this->assertDatabaseHas('comments', [
+            'card_id' => $this->card->id,
+            'user_id' => $this->user->id,
+            'content' => $commentContent
+        ]);
+    }
+
+    /**
+     * 認証済みユーザーは「自分」のコメントを編集できる
+     */
+    public function test_an_authenticated_user_can_update_their_own_comment()
+    {
+        // 1. 準備 (Arrange)
+        // setUp() で $this->user と $this->card が作成済み
+        // $this->user が投稿したコメントを作成
+        $comment = Comment::factory()->create([
+            'card_id' => $this->card->id,
+            'user_id' => $this->user->id,
+            'content' => 'Original content'
+        ]);
+        $updatedContent = 'Updated content';
+
+        // 2. 実行 (Act)
+        // 認証済みユーザーとして、コメント更新API (comments.update) にPATCHリクエスト
+        $response = $this->actingAs($this->user)->patchJson(
+            route('comments.update', $comment),
+            ['content' => $updatedContent]
+        );
+
+        // 3. 検証 (Assert)
+        $response->assertStatus(200) // 200 OK
+                 ->assertJson([
+                     'content' => $updatedContent,
+                     'user' => ['id' => $this->user->id] // ユーザー情報も含まれている
+                 ]);
+
+        $this->assertDatabaseHas('comments', [
+            'id' => $comment->id,
+            'content' => $updatedContent
+        ]);
+    }
+
+    /**
+     * 認証済みユーザーは「他人」のコメントを編集できない (403 Forbidden)
+     */
+    public function test_an_authenticated_user_cannot_update_others_comment()
+    {
+        // 1. 準備 (Arrange)
+        // 別のユーザー（他人）を作成
+        $otherUser = User::factory()->create();
+        // 他人が投稿したコメントを作成
+        $othersComment = Comment::factory()->create([
+            'card_id' => $this->card->id,
+            'user_id' => $otherUser->id,
+            'content' => 'Others content'
+        ]);
+
+        // 2. 実行 (Act)
+        // $this->user として「他人」のコメントを更新しようとする
+        $response = $this->actingAs($this->user)->patchJson(
+            route('comments.update', $othersComment),
+            ['content' => 'Malicious update']
+        );
+
+        // 3. 検証 (Assert)
+        $response->assertStatus(403); // 403 Forbidden が返ってくる
+
+        // データベースが更新されていないことを確認
+        $this->assertDatabaseHas('comments', [
+            'id' => $othersComment->id,
+            'content' => 'Others content' // 元のまま
+        ]);
+    }
+
+    /**
+     * 認証済みユーザーは「自分」のコメントを削除できる
+     */
+    public function test_an_authenticated_user_can_delete_their_own_comment()
+    {
+        // 1. 準備 (Arrange)
+        // $this->user が投稿したコメントを作成
+        $comment = Comment::factory()->create([
+            'card_id' => $this->card->id,
+            'user_id' => $this->user->id
+        ]);
+
+        // 2. 実行 (Act)
+        // 認証済みユーザーとして、コメント削除API (comments.destroy) にDELETEリクエスト
+        $response = $this->actingAs($this->user)->deleteJson(
+            route('comments.destroy', $comment)
+        );
+
+        // 3. 検証 (Assert)
+        $response->assertStatus(204); // 204 No Content
+        $this->assertDatabaseMissing('comments', ['id' => $comment->id]);
+    }
+
+    /**
+     * 認証済みユーザーは「他人」のコメントを削除できない (403 Forbidden)
+     */
+    public function test_an_authenticated_user_cannot_delete_others_comment()
+    {
+        // 1. 準備 (Arrange)
+        // 別のユーザー（他人）を作成
+        $otherUser = User::factory()->create();
+        // 他人が投稿したコメントを作成
+        $othersComment = Comment::factory()->create([
+            'card_id' => $this->card->id,
+            'user_id' => $otherUser->id
+        ]);
+
+        // 2. 実行 (Act)
+        // $this->user として「他人」のコメントを削除しようとする
+        $response = $this->actingAs($this->user)->deleteJson(
+            route('comments.destroy', $othersComment)
+        );
+
+        // 3. 検証 (Assert)
+        $response->assertStatus(403); // 403 Forbidden が返ってくる
+
+        // データベースから削除されていないことを確認
+        $this->assertDatabaseHas('comments', ['id' => $othersComment->id]);
     }
 }

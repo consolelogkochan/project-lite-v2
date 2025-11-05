@@ -7,6 +7,8 @@ use App\Models\Board;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use App\Models\Comment;
+use Illuminate\Support\Facades\Storage;
 
 class User extends Authenticatable
 {
@@ -22,6 +24,7 @@ class User extends Authenticatable
         'name',
         'email',
         'password',
+        'avatar',
     ];
 
     /**
@@ -48,6 +51,15 @@ class User extends Authenticatable
     }
 
     /**
+     * The attributes that should be appended to arrays.
+     *
+     * @var array
+     */
+    protected $appends = [ // ★ 2. このプロパティを追加
+        'avatar_url',
+    ];
+
+    /**
      * ユーザーが所有するボード（作成者であるボード）
      */
     public function ownedBoards()
@@ -61,5 +73,19 @@ class User extends Authenticatable
     public function boards()
     {
         return $this->belongsToMany(Board::class, 'board_user')->withTimestamps();
+    }
+
+    /**
+     * アバターへの公開URLを取得するアクセサ
+     */
+    public function getAvatarUrlAttribute(): ?string
+    {
+        if ($this->avatar) { // ★ "avatar_path" から "avatar" に変更
+            // "avatar" (例: "avatars/xyz.jpg") から
+            // "storage:link" された公開URL (例: "/storage/avatars/xyz.jpg") を生成
+            return Storage::url($this->avatar); // ★ "avatar_path" から "avatar" に変更
+        }
+        
+        return null;
     }
 }

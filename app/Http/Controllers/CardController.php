@@ -40,6 +40,22 @@ class CardController extends Controller
         return response()->json($card, 201);
     }
     /**
+     * カード詳細情報を取得する (API)
+     * ★ このメソッドを追加
+     */
+    public function show(Card $card)
+    {
+        // TODO: ここに「このカードを閲覧する権限があるか」の
+        // 認可(Policy)チェックを将来追加する
+
+        // カード情報、属するリスト、コメント（＋コメント投稿者）を一緒に読み込む
+        // comments は Card モデルで latest() (最新順) に定義済み
+        $card->load('list', 'comments.user'); 
+
+        return response()->json($card);
+    }
+
+    /**
      * カードの情報を更新する (API)
      * (主にタイトル更新用)
      * ★ このメソッドを追加
@@ -51,8 +67,10 @@ class CardController extends Controller
 
         // バリデーション
         $validator = Validator::make($request->all(), [
-            'title' => 'required|string|max:255',
-            // 'description' など、他のフィールドも将来ここに追加できる
+            // title と description のどちらか一方だけが送られてくる場合があるため、
+            // 'sometimes' (リクエストに存在する場合のみ) 'required' (必須) とする
+            'title' => 'sometimes|required|string|max:255',
+            'description' => 'sometimes|nullable|string', // nullable(nullを許可) に設定
         ]);
 
         if ($validator->fails()) {
@@ -60,9 +78,8 @@ class CardController extends Controller
         }
 
         // データを更新
-        $card->update([
-            'title' => $request->title,
-        ]);
+        // $request->all() を使うことで、送られてきたキー(titleまたはdescription)のみを更新
+        $card->update($request->all());
 
         // 更新されたカードデータを返す
         return response()->json($card);
