@@ -21,6 +21,20 @@ class Card extends Model
         'title',
         'order',
         'description',
+        'start_date', 
+        'end_date',
+        'reminder_at',
+    ];
+
+    /**
+     * The attributes that should be cast.
+     *
+     * @var array<string, string>
+     */
+    protected $casts = [ // ★ このプロパティを追加
+        'start_date' => 'datetime',
+        'end_date' => 'datetime',
+        'reminder_at' => 'datetime',
     ];
 
     /**
@@ -29,6 +43,25 @@ class Card extends Model
     public function list()
     {
         return $this->belongsTo(BoardList::class, 'board_list_id');
+    }
+
+    /**
+     * このカードが属するボード（listテーブル経由）
+     * ★ このメソッドを追加
+     */
+    public function board()
+    {
+        // Card -> hasOne(BoardList::class) -> hasOne(Board::class)
+        // (BoardListモデルで 'board_id' を 'board' として定義済みなら使える)
+        // ※BoardListモデルの 'board' リレーション (belongsTo) が必要
+        return $this->hasOneThrough(
+            Board::class,
+            BoardList::class,
+            'id', // BoardList (中間) のキー
+            'id', // Board (最終) のキー
+            'board_list_id', // Card (起点) のキー
+            'board_id' // BoardList (中間) の (Boardへの) キー
+        );
     }
 
     /**

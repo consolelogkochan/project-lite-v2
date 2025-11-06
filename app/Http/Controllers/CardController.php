@@ -8,6 +8,7 @@ use App\Models\Card;
 use Illuminate\Support\Facades\Validator;
 // ★ use Illuminate\Validation\Rule; // (将来の権限チェックで使うかも)
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 
 class CardController extends Controller
 {
@@ -71,6 +72,26 @@ class CardController extends Controller
             // 'sometimes' (リクエストに存在する場合のみ) 'required' (必須) とする
             'title' => 'sometimes|required|string|max:255',
             'description' => 'sometimes|nullable|string', // nullable(nullを許可) に設定
+            // ★ 修正点: start_date はシンプルに
+            'start_date' => 'sometimes|nullable|date',
+            // ★ 修正点: end_date のルールを条件付きにする
+            'end_date' => [
+                'sometimes', 'nullable', 'date',
+                // ★ 修正: start_date "も" end_date "も" filled 
+                // (nullでない) 場合にのみ、after_or_equal を適用
+                Rule::when($request->filled('start_date') && $request->filled('end_date'), [
+                    'after_or_equal:start_date'
+                ]),
+            ],
+            
+            'reminder_at' => [
+                'sometimes', 'nullable', 'date',
+                // ★ 修正: end_date "も" reminder_at "も" filled 
+                // (nullでない) 場合にのみ、before_or_equal を適用
+                Rule::when($request->filled('end_date') && $request->filled('reminder_at'), [
+                    'before_or_equal:end_date'
+                ]),
+            ],
         ]);
 
         if ($validator->fails()) {

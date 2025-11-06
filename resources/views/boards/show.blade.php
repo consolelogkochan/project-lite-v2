@@ -48,6 +48,7 @@
         @submit-new-comment.window="submitNewCommentFromModal($event.detail)"
         @submit-delete-comment.window="deleteCommentFromModal($event.detail)"
         @submit-edit-comment.window="updateCommentFromModal($event.detail)"
+        @submit-card-dates.window="updateCardDatesFromModal($event.detail)"
         x-data='{
             lists: [],
             newCardForm: { // ★ 追加: カード追加フォームの状態
@@ -594,6 +595,83 @@
                     alert(error.message || "An error occurred while updating the comment.");
                     // エラー時もフォームを閉じる
                     detail.callback();
+                });
+            },
+
+            updateCardDatesFromModal(detail) {
+                // detail = { card: {...}, startDate: "...", endDate: "...", reminder: "...", callback: () => {} }
+                const card = this.selectedCardData;
+                
+                // ★★★ ここからリマインダー日時 (reminder_at) の計算 ★★★
+                let reminder_at = null;
+                const endDate = detail.endDate ? new Date(detail.endDate) : null;
+                
+                if (endDate && detail.reminder !== "none") {
+                    let reminderDate = new Date(endDate.getTime()); // 期限日のコピーを作成
+
+                    if (detail.reminder === "10_minutes_before") {
+                        reminderDate.setMinutes(reminderDate.getMinutes() - 10);
+                    } else if (detail.reminder === "1_hour_before") {
+                        reminderDate.setHours(reminderDate.getHours() - 1);
+                    } else if (detail.reminder === "1_day_before") {
+                        reminderDate.setDate(reminderDate.getDate() - 1);
+                    }
+                    
+                    // ★ 修正後: ローカル時刻を Y-m-d H:i:s 形式でフォーマット
+                    // (flatpickr のフォーマッタを流用)
+                    reminder_at = window.flatpickr.formatDate(reminderDate, "Y-m-d H:i:S");
+                }
+                // ★★★ 計算ここまで ★★★
+
+                fetch(`/cards/${card.id}`, {
+                    method: "PATCH",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-CSRF-TOKEN": document.querySelector("meta[name=\"csrf-token\"]").getAttribute("content")
+                    },
+                    body: JSON.stringify({ 
+                        start_date: detail.startDate,
+                        end_date: detail.endDate,
+                        reminder_at: reminder_at // ★ 計算した `reminder_at` (日時 or null) を送信
+                    })
+                })
+                .then(response => {
+                    if (response.status === 422) {
+                        alert("Invalid dates. Please ensure the due date is after the start date.");
+                        throw new Error("Validation failed");
+                    }
+                    if (!response.ok) {
+                        throw new Error("Failed to update card dates.");
+                    }
+                    return response.json();
+                })
+                .then(updatedCard => {
+                    // ★ 成功時の処理 ★
+                    
+                    // 1. モーダル内のデータを更新
+                    this.selectedCardData.start_date = updatedCard.start_date;
+                    this.selectedCardData.end_date = updatedCard.end_date;
+                    this.selectedCardData.reminder_at = updatedCard.reminder_at; // ★ reminder_at も更新
+                    
+                    // 2. メインボード（背景）のデータも更新
+                    const listIndex = this.lists.findIndex(l => l.id == updatedCard.board_list_id);
+                    if (listIndex > -1) {
+                        const cardIndex = this.lists[listIndex].cards.findIndex(c => c.id == updatedCard.id);
+                        if (cardIndex > -1) {
+                            this.lists[listIndex].cards[cardIndex].start_date = updatedCard.start_date;
+                            this.lists[listIndex].cards[cardIndex].end_date = updatedCard.end_date;
+                            this.lists[listIndex].cards[cardIndex].reminder_at = updatedCard.reminder_at; // ★ reminder_at も更新
+                        }
+                    }
+                    
+                    // 3. ポップオーバーを閉じる (コールバックを実行)
+                    detail.callback();
+                })
+                .catch(error => {
+                    console.error("Error updating card dates:", error);
+                    if (error.message !== "Validation failed") {
+                        alert("An error occurred while updating the dates.");
+                    }
                 });
             },
 

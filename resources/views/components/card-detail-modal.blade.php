@@ -124,7 +124,7 @@
                             {{-- 説明文表示 (非編集時) --}}
                             <div x-show="!editingCardDescription">
                                 {{-- 説明文が null または空の場合 --}}
-                                <div x-show="!selectedCardData.description" x-cloak>
+                                <div x-show="selectedCardData && !selectedCardData.description" x-cloak>
                                     <button 
                                         @click="editingCardDescription = true; editedCardDescription = ''; $nextTick(() => $refs.modalCardDescriptionInput.focus())"
                                         class="w-full text-left bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-300 rounded-md p-3 text-sm"
@@ -133,9 +133,9 @@
                                     </button>
                                 </div>
                                 {{-- 説明文が存在する場合 --}}
-                                <div x-show="selectedCardData.description"
+                                <div x-show="selectedCardData && selectedCardData.description"
                                      @click="editingCardDescription = true; editedCardDescription = selectedCardData.description; $nextTick(() => $refs.modalCardDescriptionInput.focus())"
-                                     x-html="selectedCardData.description.replace(/\n/g, '<br>')" {{-- 1. 改行を <br> に変換 --}}
+                                     x-html="selectedCardData ? (selectedCardData.description ? selectedCardData.description.replace(/\n/g, '<br>') : '') : ''" {{-- 1. 改行を <br> に変換 --}}
                                      class="prose prose-sm dark:prose-invert max-w-none text-gray-700 dark:text-gray-300 cursor-pointer p-3 -m-3 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-md">
                                     {{-- x-html を使うため、中身は空 --}}
                                 </div>
@@ -199,7 +199,7 @@
                             {{-- コメント一覧 --}}
                             <div class="mt-6 space-y-6">
                                 {{-- コメントループ --}}
-                                <template x-for="comment in selectedCardData.comments" :key="comment.id">
+                                <template x-for="comment in (selectedCardData ? selectedCardData.comments : [])" :key="comment.id">
                                     <div class="flex items-start space-x-3">
                                         {{-- アバター (プロフィール画像 or イニシャル) --}}
                                         <div class="flex-shrink-0">
@@ -321,10 +321,157 @@
                             Checklist
                         </button>
                         {{-- Dates (Due Date) --}}
-                        <button type="button" class="w-full flex items-center bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 text-sm font-medium rounded-md px-3 py-2">
-                            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
-                            Dates
-                        </button>
+                        <div x-data='{ 
+                                open: false, 
+                                localStartDate: null, 
+                                localEndDate: null,
+                                localReminder: "none",
+                                
+                                pickerStartInstance: null, 
+                                pickerEndInstance: null,
+                                
+                                isPickerOpen: false, // ★ 1. カレンダーが開いているかどうかのフラグ
+
+                                initPickers() {
+                                    // 1. 親スコープから日付をコピー (Y-m-d H:i 形式に変換)
+                                    this.localStartDate = this.selectedCardData.start_date 
+                                        ? window.flatpickr.formatDate(new Date(this.selectedCardData.start_date), "Y-m-d H:i") 
+                                        : null;
+                                    this.localEndDate = this.selectedCardData.end_date
+                                        ? window.flatpickr.formatDate(new Date(this.selectedCardData.end_date), "Y-m-d H:i")
+                                        : null;
+                                    this.calculateReminderValue(); 
+
+                                    // 2. flatpickr を初期化または更新
+                                    
+                                    // Start Date Picker
+                                    if (!this.pickerStartInstance) { 
+                                        this.pickerStartInstance = flatpickr(this.$refs.startDateInput, {
+                                            enableTime: true, dateFormat: "Y-m-d H:i", defaultDate: this.localStartDate,
+                                            // static: true, // ★ 削除
+                                            // appendTo: ... // ★ 削除
+                                            onOpen: () => { this.isPickerOpen = true; },  // ★ 2. 開いたらフラグを立てる
+                                            onClose: () => { this.isPickerOpen = false; }, // ★ 2. 閉じたらフラグを下ろす
+                                            onChange: (selectedDates) => {
+                                                this.localStartDate = selectedDates[0] ? window.flatpickr.formatDate(selectedDates[0], "Y-m-d H:i") : null;
+                                            }
+                                        });
+                                    } else { 
+                                        this.pickerStartInstance.setDate(this.localStartDate, false);
+                                    }
+
+                                    // End Date Picker
+                                    if (!this.pickerEndInstance) { 
+                                        this.pickerEndInstance = flatpickr(this.$refs.endDateInput, {
+                                            enableTime: true, dateFormat: "Y-m-d H:i", defaultDate: this.localEndDate,
+                                            // static: true, // ★ 削除
+                                            // appendTo: ... // ★ 削除
+                                            onOpen: () => { this.isPickerOpen = true; },  // ★ 2. 開いたらフラグを立てる
+                                            onClose: () => { this.isPickerOpen = false; }, // ★ 2. 閉じたらフラグを下ろす
+                                            onChange: (selectedDates) => {
+                                                this.localEndDate = selectedDates[0] ? window.flatpickr.formatDate(selectedDates[0], "Y-m-d H:i") : null;
+                                                this.calculateReminderValue(); 
+                                            }
+                                        });
+                                    } else { 
+                                        this.pickerEndInstance.setDate(this.localEndDate, false);
+                                    }
+                                },
+                                
+                                calculateReminderValue() {
+                                    const endDate = this.localEndDate ? new Date(this.localEndDate) : null;
+                                    // $castsにより ISO 8601 形式 (Z付き) で来る reminder_at を Date オブジェクトに
+                                    const reminderDate = this.selectedCardData.reminder_at ? new Date(this.selectedCardData.reminder_at) : null;
+
+                                    if (!endDate || !reminderDate) {
+                                        this.localReminder = "none";
+                                        return;
+                                    }
+
+                                    // 差を分で計算 (ローカルタイムゾーン同士の差)
+                                    const diffMinutes = Math.round((endDate.getTime() - reminderDate.getTime()) / 60000);
+
+                                    if (diffMinutes === 10) { this.localReminder = "10_minutes_before"; }
+                                    else if (diffMinutes === 60) { this.localReminder = "1_hour_before"; }
+                                    else if (diffMinutes === 1440) { this.localReminder = "1_day_before"; }
+                                    else { this.localReminder = "none"; }
+                                }
+                             }' 
+                             class="relative"
+                        >
+                            {{-- 1. ボタン本体 (変更なし) --}}
+                            <button @click="open = !open; if(open) { $nextTick(() => initPickers()) }" 
+                                    type="button" 
+                                    class="w-full flex items-center bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 text-sm font-medium rounded-md px-3 py-2">
+                                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 002-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                                Dates
+                            </button>
+
+                            {{-- 2. ポップオーバー本体 --}}
+                            <div x-show="open"
+                                 {{-- ★ 3. @click.away にフラグチェックを追加 --}}
+                                 @click.away="if (!isPickerOpen) open = false"
+                                 x-transition
+                                 x-cloak
+                                 class="absolute z-20 mt-1 w-72 bg-white dark:bg-gray-900 rounded-md shadow-lg border border-gray-200 dark:border-gray-700"
+                            >
+                                <div class="p-4">
+                                    {{-- ... (中身は変更なし) ... --}}
+                                    <h4 class="text-center text-sm font-medium text-gray-500 dark:text-gray-400 mb-3">Dates</h4>
+                                    <button @click="open = false" type="button" class="absolute top-2 right-2 p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                                    </button>
+                                    <div class="space-y-4">
+                                        <div>
+                                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Start date</label>
+                                            <input x-ref="startDateInput" type="text" placeholder="Select start date..."
+                                                   readonly="readonly"
+                                                   class="mt-1 block w-full text-sm rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-blue-500 focus:border-blue-500 cursor-pointer">
+                                        </div>
+                                        <div>
+                                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Due date</label>
+                                            <input x-ref="endDateInput" type="text" placeholder="Select due date..."
+                                                   readonly="readonly"
+                                                   class="mt-1 block w-full text-sm rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-blue-500 focus:border-blue-500 cursor-pointer">
+                                        </div>
+                                        <div x-show="localEndDate">
+                                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Reminder</label>
+                                            <select x-model="localReminder"
+                                                    class="mt-1 block w-full text-sm rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-blue-500 focus:border-blue-500">
+                                                <option value="none">None</option>
+                                                <option value="10_minutes_before">10 minutes before</option>
+                                                <option value="1_hour_before">1 hour before</option>
+                                                <option value="1_day_before">1 day before</option> {{-- (at 9:00 AM) を削除 --}}
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="mt-4">
+                                        <button type="button" 
+                                                @click.prevent="$dispatch('submit-card-dates', { 
+                                                    card: selectedCardData, 
+                                                    startDate: localStartDate, 
+                                                    endDate: localEndDate,
+                                                    reminder: localReminder,
+                                                    callback: () => open = false 
+                                                })"
+                                                class="w-full px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700">
+                                            Save
+                                        </button>
+                                        <button type="button" 
+                                                @click.prevent="$dispatch('submit-card-dates', { 
+                                                    card: selectedCardData, 
+                                                    startDate: null, 
+                                                    endDate: null,
+                                                    reminder: 'none',
+                                                    callback: () => open = false 
+                                                })"
+                                                class="w-full mt-2 px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 text-sm font-medium rounded-md hover:bg-gray-300 dark:hover:bg-gray-600">
+                                            Remove
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                         {{-- Attachment --}}
                         <button type="button" class="w-full flex items-center bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 text-sm font-medium rounded-md px-3 py-2">
                             <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.414a4 4 0 00-5.656-5.656l-6.415 6.415a6 6 0 108.486 8.486L20.5 13"></path></svg>

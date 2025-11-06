@@ -10,6 +10,8 @@ use App\Models\Board;  // ★
 use App\Models\BoardList; // ★
 use App\Models\Card;   // ★
 use App\Models\Comment;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Notification;
 
 class CardFunctionTest extends TestCase
 {
@@ -451,5 +453,119 @@ class CardFunctionTest extends TestCase
 
         // データベースから削除されていないことを確認
         $this->assertDatabaseHas('comments', ['id' => $othersComment->id]);
+    }
+
+    /**
+     * 認証済みユーザーはカードの期限日とリマインダーを設定できる
+     */
+    public function test_an_authenticated_user_can_set_card_dates_and_reminder()
+    {
+        // 1. 準備 (Arrange)
+        // setUp() で $this->user と $this->card が作成済み
+        
+        // (Carbonライブラリをインポート)
+        // use Illuminate\Support\Carbon; 
+        // ※ CardFunctionTest クラスの use 文のブロックに Carbon を追加してください
+        
+        // ★ 修正: ->micro(0) を追加してマイクロ秒をゼロにする
+        $startDate = Carbon::now()->addDay()->setHour(9)->setMinute(0)->setSecond(0)->micro(0);
+        $endDate = Carbon::now()->addDays(2)->setHour(12)->setMinute(0)->setSecond(0)->micro(0);
+        
+        // "1 hour before" (endDate の1時間前)
+        // (endDate が既にマイクロ秒ゼロなので、copy() でOK)
+        $reminderAt = $endDate->copy()->subHour();
+
+        // 2. 実行 (Act)
+        // 日付保存API (cards.update) にPATCHリクエスト
+        $response = $this->actingAs($this->user)->patchJson(
+            route('cards.update', $this->card),
+            [
+                'start_date' => $startDate->toDateTimeString(), // "Y-m-d H:i:s" 形式
+                'end_date' => $endDate->toDateTimeString(),
+                'reminder_at' => $reminderAt->toDateTimeString(),
+            ]
+        );
+
+        // 3. 検証 (Assert)
+        
+        // A. レスポンスの検証
+        $response->assertStatus(200) // 200 OK
+                 ->assertJson([
+                     'id' => $this->card->id,
+                     // $casts が 'datetime' なので、ISO 8601 形式 (T...Z) で返ってくる
+                     'start_date' => $startDate->toISOString(),
+                     'end_date' => $endDate->toISOString(),
+                     'reminder_at' => $reminderAt->toISOString(),
+                 ]);
+
+        // B. データベースの検証 (DBには "Y-m-d H:i:s" 形式で保存されている)
+        $this->assertDatabaseHas('cards', [
+            'id' => $this->card->id,
+            'start_date' => $startDate->toDateTimeString(),
+            'end_date' => $endDate->toDateTimeString(),
+            'reminder_at' => $reminderAt->toDateTimeString(),
+        ]);
+    }
+
+    /**
+     * スケジュールタスクは reminder_at が来たカードの通知を送信する
+     */
+    public function test_schedule_task_sends_due_date_reminders()
+    {
+        // 1. 準備 (Arrange)
+        
+        // ★ 通知を「フェイク」する
+        // (実際には送信せず、テスト側でキャッチできるようにする)
+        Notification::fake();
+
+        // ★ 時間を「凍結」する
+        // (Carbon::now() が常にこの指定日時に固定される)
+        $now = Carbon::create(2025, 11, 10, 12, 0, 0);
+        Carbon::setTestNow($now);
+
+        // setUp() で $this->user (通知を受け取る人) が作成済み
+        // $this->user をボードのメンバーにする (※setUp() では未実装のためここで実行)
+        $this->board->users()->attach($this->user->id);
+        
+        // $this->card (カード1) の reminder_at を「今」に設定
+        $this->card->update([
+            'reminder_at' => $now
+        ]);
+        
+        // (比較用) まだリマインド時刻が来ていないカード
+        $cardLater = Card::factory()->create([
+            'board_list_id' => $this->list->id,
+            'reminder_at' => $now->copy()->addDay() // 明日
+        ]);
+
+        // 2. 実行 (Act)
+        // artisan コマンド 'reminders:send-due-dates' を実行
+        $this->artisan('reminders:send-due-dates');
+
+        // 3. 検証 (Assert)
+        
+        // A. $this->card (今リマインド) の通知が...
+        //    $this->user (メンバー) に...
+        //    DueDateReminder クラスで 1 回送信されたか？
+        Notification::assertSentTo(
+            [$this->user], // 通知先ユーザー
+            \App\Notifications\DueDateReminder::class, // 通知クラス
+            function ($notification, $channels) {
+                // (オプション) 送信された通知が正しいカードのものか確認
+                return $notification->card->id === $this->card->id;
+            }
+        );
+
+        // B. $cardLater (明日リマインド) の通知は「送信されなかった」か？
+        Notification::assertNotSentTo(
+            [$this->user],
+            \App\Notifications\DueDateReminder::class,
+            function ($notification, $channels) use ($cardLater) {
+                return $notification->card->id === $cardLater->id;
+            }
+        );
+        
+        // 時間の凍結を解除 (他のテストに影響しないように)
+        Carbon::setTestNow();
     }
 }

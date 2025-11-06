@@ -43,4 +43,14 @@ class Board extends Model
     {
         return $this->hasManyThrough(Card::class, BoardList::class, 'board_id', 'board_list_id');
     }
+
+    /**
+     * このボードに所属するすべてのユーザー（中間テーブル経由）
+     * ★ 2. このメソッドを追加
+     */
+    public function users()
+    {
+        // 'board_user' 中間テーブルを経由して User モデルにアクセス
+        return $this->belongsToMany(User::class, 'board_user')->withTimestamps();
+    }
 }
