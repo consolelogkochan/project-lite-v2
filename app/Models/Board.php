@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory; // ← この行を追加
 use Illuminate\Database\Eloquent\Model;
 use App\Models\BoardList;
 use App\Models\Card;
+use App\Models\Label;
 
 class Board extends Model
 {
@@ -52,5 +53,15 @@ class Board extends Model
     {
         // 'board_user' 中間テーブルを経由して User モデルにアクセス
         return $this->belongsToMany(User::class, 'board_user')->withTimestamps();
+    }
+
+    /**
+     * このボードが持つすべてのラベル
+     * ★ 2. このメソッドを追加
+     */
+    public function labels()
+    {
+        // ボードは多くのラベルを持つ
+        return $this->hasMany(Label::class);
     }
 }

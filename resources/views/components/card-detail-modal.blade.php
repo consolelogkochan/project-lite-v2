@@ -300,23 +300,187 @@
 
 
                 {{-- ★★★ サイドバー (右側 / 1カラム分) ★★★ --}}
-                <div class="col-span-3 lg:col-span-1 space-y-3">
+                <div class="col-span-3 lg:col-span-1">
+                    {{-- ★★★ ここから挿入: 割り当て済みラベル一覧 ★★★ --}}
+                    {{-- ★ 修正: selectedCardData && を先頭に追加 --}}
+                    <div x-show="selectedCardData && selectedCardData.labels && selectedCardData.labels.length > 0">
+                        <h3 class="text-sm ...">Labels</h3>
+                        <div class="flex flex-wrap gap-1 mt-2">
+                            {{-- ★ 修正: (selectedCardData ? ... : []) で保護 --}}
+                            <template x-for="label in (selectedCardData ? selectedCardData.labels : [])" :key="label.id">
+                                <span :class="label.color"
+                                      class="px-2 py-0.5 text-xs font-semibold text-white rounded-full"
+                                      x-text="label.name">
+                                </span>
+                            </template>
+                        </div>
+                    </div>
+                    {{-- ★★★ 挿入ここまで ★★★ --}}
                     <h3 class="text-sm font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Add to card</h3>
                     
                     {{-- アビリティボタン群 --}}
-                    <div class="space-y-2">
+                    
                         {{-- Members --}}
-                        <button type="button" class="w-full flex items-center bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 text-sm font-medium rounded-md px-3 py-2">
+                        <button type="button" class="w-full flex items-center bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 text-sm font-medium rounded-md px-3 py-2 mt-3">
                             <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
                             Members
                         </button>
                         {{-- Labels --}}
-                        <button type="button" class="w-full flex items-center bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 text-sm font-medium rounded-md px-3 py-2">
-                            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h.01M17 3h.01M17 7h.01M17 11h.01M17 15h.01M7 11h.01M7 15h.01M3 21h18M3 17h18M3 13h18M3 9h18M3 5h18"></path></svg>
-                            Labels
-                        </button>
+                        <div x-data='{ open: false }' class="relative w-full mt-3">
+                            {{-- 1. ボタン本体 --}}
+                            <button @click="open = !open" 
+                                    type="button" 
+                                    class="w-full flex items-center bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 text-sm font-medium rounded-md px-3 py-2">
+                                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h.01M17 3h.01M17 7h.01M17 11h.01M17 15h.01M7 11h.01M7 15h.01M3 21h18M3 17h18M3 13h18M3 9h18M3 5h18"></path></svg>
+                                Labels
+                            </button>
+
+                            {{-- 2. ポップオーバー本体 --}}
+                            <div x-show="open"
+                                 @click.away="open = false"
+                                 x-transition
+                                 x-cloak
+                                 class="absolute z-20 mt-1 w-72 bg-white dark:bg-gray-900 rounded-md shadow-lg border border-gray-200 dark:border-gray-700"
+                            >
+                                <div class="p-4">
+                                    <h4 class="text-center text-sm font-medium text-gray-500 dark:text-gray-400 mb-3">Labels</h4>
+                                    <button @click="open = false" type="button" class="absolute top-2 right-2 p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                                    </button>
+
+                                    {{-- ラベル一覧と作成フォーム --}}
+                                    <div x-data='{
+                                        search: "",
+                                        editingLabel: null, // ★ 1. 編集中のラベルオブジェクト(null=新規作成)
+                                        formName: "",       // ★ 2. フォーム用の名前
+                                        formColor: "bg-green-500", // ★ 3. フォーム用の色
+                                        availableColors: [
+                                            "bg-green-500", "bg-yellow-500", "bg-orange-500", "bg-red-500", 
+                                            "bg-purple-500", "bg-blue-500", "bg-sky-500", "bg-gray-500"
+                                        ],
+
+                                        // ★ 4. 新規作成フォームを開く関数
+                                        openCreateForm() {
+                                            this.editingLabel = { id: null }; // id: null で「新規」と判断
+                                            this.formName = "";
+                                            this.formColor = "bg-green-500";
+                                        },
+                                        
+                                        // ★ 5. 編集フォームを開く関数
+                                        openEditForm(label) {
+                                            this.editingLabel = label;
+                                            this.formName = label.name;
+                                            this.formColor = label.color;
+                                        },
+
+                                        // ★ 6. フォームを閉じる（リセットする）関数
+                                        closeForm() {
+                                            this.editingLabel = null;
+                                            this.formName = "";
+                                            this.formColor = "bg-green-500";
+                                        }
+                                    }'>
+                                        {{-- フォーム非表示時 (検索と一覧) --}}
+                                        <div x-show="!editingLabel">
+                                            <input type="text" x-model="search" placeholder="Search labels..."
+                                                   class="block w-full text-sm rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-blue-500 focus:border-blue-500">
+                                            
+                                            <p class="mt-4 mb-2 text-xs text-gray-500 dark:text-gray-400">Labels</p>
+                                            
+                                            {{-- ラベル一覧ループ --}}
+                                            <div class="space-y-1">
+                                                <template x-for="label in boardLabels.filter(l => l.name.toLowerCase().includes(search.toLowerCase()))" :key="label.id">
+                                                    <div class="flex items-center space-x-2">
+                                                        {{-- ★★★ 修正後のチェックボックス ★★★ --}}
+                                                        <input type="checkbox"
+                                                               {{-- 1. 割り当て済みかチェック --}}
+                                                               :checked="selectedCardData && selectedCardData.labels.some(l => l.id === label.id)"
+                                                               {{-- 2. クリックでイベント発火 --}}
+                                                               @change="$dispatch('toggle-label', { 
+                                                                   card: selectedCardData, 
+                                                                   label: label,
+                                                                   isAttached: $event.target.checked 
+                                                               })"
+                                                               class="rounded border-gray-300 dark:border-gray-600 text-blue-600 shadow-sm focus:ring-blue-500">
+                                                        
+                                                        {{-- ラベル本体 (クリックで編集フォームを開く) --}}
+                                                        <span @click="openEditForm(label)" {{-- ★ 1. クリックで編集 --}}
+                                                              :class="label.color"
+                                                              class="w-full px-3 py-1.5 text-sm font-medium text-white rounded-md cursor-pointer hover:opacity-80"
+                                                              x-text="label.name">
+                                                        </span>
+                                                        
+                                                        {{-- 編集ボタン (クリックで編集フォームを開く) --}}
+                                                        <button @click="openEditForm(label)" {{-- ★ 1. クリックで編集 --}}
+                                                                type="button" class="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                                                        </button>
+                                                    </div>
+                                                </template>
+                                            </div>
+
+                                            {{-- 「Create a new label」ボタン --}}
+                                            <button @click="openCreateForm()" {{-- ★ 2. openCreateForm() に変更 --}}
+                                                    type="button" class="w-full mt-3 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-md p-2">
+                                                Create a new label
+                                            </button>
+                                        </div>
+
+                                        {{-- フォーム表示時 (新規作成 or 編集) --}}
+                                        <template x-if="editingLabel">
+                                            <div x-cloak class="mt-4">
+                                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Name</label>
+                                                <input type="text" x-model="formName" {{-- ★ 3. newLabelName -> formName --}}
+                                                    class="mt-1 block w-full text-sm rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-blue-500 focus:border-blue-500">
+
+                                                <label class="block mt-3 text-sm font-medium text-gray-700 dark:text-gray-300">Color</label>
+                                                <div class="mt-1 grid grid-cols-4 gap-2">
+                                                    <template x-for="color in availableColors" :key="color">
+                                                        <button @click="formColor = color" {{-- ★ 3. newLabelColor -> formColor --}}
+                                                                :class="color"
+                                                                class="h-8 rounded-md flex items-center justify-center">
+                                                            <svg x-show="formColor === color" class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>
+                                                        </button>
+                                                    </template>
+                                                </div>
+
+                                                <div class="mt-4 flex items-center justify-between">
+                                                    {{-- 「Save」 (Create / Update 兼用) --}}
+                                                    <button @click.prevent="
+                                                                if (editingLabel.id === null) {
+                                                                    // 新規作成
+                                                                    $dispatch('submit-new-label', { board: selectedCardData.list.board, name: formName, color: formColor, callback: () => closeForm() });
+                                                                } else {
+                                                                    // 更新
+                                                                    $dispatch('submit-edit-label', { label: editingLabel, name: formName, color: formColor, callback: () => closeForm() });
+                                                                }"
+                                                            type="button" class="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700">
+                                                        {{-- ★ 4. ボタンテキストを動的に変更 --}}
+                                                        <span x-show="editingLabel.id === null">Create</span>
+                                                        <span x-show="editingLabel.id !== null">Save</span>
+                                                    </button>
+
+                                                    {{-- 削除ボタン (編集時のみ表示) --}}
+                                                    <button x-show="editingLabel.id !== null"
+                                                            @click.prevent="$dispatch('submit-delete-label', { label: editingLabel, callback: () => closeForm() })"
+                                                            type="button" class="px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-md hover:bg-red-700">
+                                                        Delete
+                                                    </button>
+
+                                                    {{-- キャンセルボタン (X) --}}
+                                                    <button @click="closeForm()" {{-- ★ 5. closeForm() に変更 --}}
+                                                            type="button" class="p-2 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-white rounded-md">
+                                                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </template>
+                                    
+                                </div>
+                            </div>
+                        </div>
                         {{-- Checklist --}}
-                        <button type="button" class="w-full flex items-center bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 text-sm font-medium rounded-md px-3 py-2">
+                        <button type="button" class="w-full flex items-center bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 text-sm font-medium rounded-md px-3 py-2 mt-3">
                             <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                             Checklist
                         </button>
@@ -397,7 +561,7 @@
                                     else { this.localReminder = "none"; }
                                 }
                              }' 
-                             class="relative"
+                             class="relative w-full mt-3"
                         >
                             {{-- 1. ボタン本体 (変更なし) --}}
                             <button @click="open = !open; if(open) { $nextTick(() => initPickers()) }" 
@@ -473,11 +637,11 @@
                             </div>
                         </div>
                         {{-- Attachment --}}
-                        <button type="button" class="w-full flex items-center bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 text-sm font-medium rounded-md px-3 py-2">
+                        <button type="button" class="w-full flex items-center bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 text-sm font-medium rounded-md px-3 py-2 mt-3">
                             <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.414a4 4 0 00-5.656-5.656l-6.415 6.415a6 6 0 108.486 8.486L20.5 13"></path></svg>
                             Attachment
                         </button>
-                    </div>
+                    
 
                     {{-- (ここに将来「Power-Ups」や「Actions」ボタンが入る) --}}
 

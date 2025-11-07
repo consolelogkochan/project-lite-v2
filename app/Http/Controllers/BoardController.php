@@ -34,6 +34,12 @@ class BoardController extends Controller
         // ボードの作成者を自動的にメンバーとして中間テーブルに追加
         $user->boards()->attach($board->id);
 
+        // デフォルトラベル「今日の目標」を作成する
+        $board->labels()->create([
+            'name' => '今日の目標',
+            'color' => 'bg-green-500' // (例: Tailwind の背景色クラス)
+        ]);
+
         // ダッシュボードにリダイレクト
         return redirect()->route('dashboard');
     }
@@ -48,8 +54,8 @@ class BoardController extends Controller
 
         // ボードに属するリストを 'order' 順で取得
         // 同時に、各リストに属するカード (BoardListモデルで 'order' 順に定義済み) も
-        // Eager Loading (with('cards')) する
-        $lists = $board->lists()->with('cards')->orderBy('order')->get();
+        // ★ 修正: 'cards.labels' も一緒に Eager Loading する
+        $lists = $board->lists()->with('cards.labels')->orderBy('order')->get();
 
         // 'boards.show' ビューに、 $board と $lists の両方を渡す
         return view('boards.show', [

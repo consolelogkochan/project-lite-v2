@@ -50,8 +50,8 @@ class CardController extends Controller
         // 認可(Policy)チェックを将来追加する
 
         // カード情報、属するリスト、コメント（＋コメント投稿者）を一緒に読み込む
-        // comments は Card モデルで latest() (最新順) に定義済み
-        $card->load('list', 'comments.user'); 
+        // ★ 修正: 'labels' (このカードに紐づくラベル) も Eager Loading
+        $card->load('list.board', 'comments.user', 'labels');
 
         return response()->json($card);
     }

@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use App\Models\BoardList;
 use App\Models\Comment;
+use App\Models\Label;
 
 class Card extends Model
 {
@@ -72,5 +73,15 @@ class Card extends Model
     {
         // 'created_at' の降順（新しいものが先）で取得
         return $this->hasMany(Comment::class)->latest();
+    }
+
+    /**
+     * このカードに紐付いているラベル
+     * ★ 2. このメソッドを追加
+     */
+    public function labels()
+    {
+        // 'card_label' 中間テーブルを経由
+        return $this->belongsToMany(Label::class, 'card_label');
     }
 }

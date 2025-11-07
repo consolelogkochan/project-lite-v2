@@ -49,6 +49,10 @@
         @submit-delete-comment.window="deleteCommentFromModal($event.detail)"
         @submit-edit-comment.window="updateCommentFromModal($event.detail)"
         @submit-card-dates.window="updateCardDatesFromModal($event.detail)"
+        @submit-new-label.window="submitNewLabel($event.detail)"
+        @submit-edit-label.window="updateLabel($event.detail)" 
+        @submit-delete-label.window="deleteLabel($event.detail)"
+        @toggle-label.window="toggleLabel($event.detail)"
         x-data='{
             lists: [],
             newCardForm: { // ★ 追加: カード追加フォームの状態
@@ -66,12 +70,21 @@
             editingCommentId: null, // 編集中のコメントID
             editedCommentContent: "", // 編集用のコメント本文
             addingList: false,
+            boardLabels: [],
             newListTitle: "",
             editingListId: null,
             editedListTitle: "",
 
             init() {
                 this.lists = @json($lists);
+
+                // ★ 2. ボードの全ラベルを fetch する処理を追加
+                fetch("{{ route('labels.index', $board) }}")
+                    .then(response => response.json())
+                    .then(data => {
+                        this.boardLabels = data;
+                    })
+                    .catch(error => console.error("Error fetching labels:", error));
             },
 
             // ★ ここから追加: selectedCardId を監視
@@ -131,7 +144,10 @@
                     return response.json();
                 })
                 .then(newList => {
-                    this.lists.push(newList);
+                    // ★ 修正: pushする前に cards 配列を初期化する
+                    newList.cards = [];
+                    // ★ 修正: .push() の代わりに、新しい配列で置き換える
+                    this.lists = [...this.lists, newList];
                     this.newListTitle = "";
                     this.addingList = false;
                 })
@@ -186,8 +202,8 @@
                 })
                 .then(response => {
                     if (!response.ok) throw new Error("Failed to delete list.");
-                    const index = this.lists.findIndex(l => l.id === list.id);
-                    if (index !== -1) this.lists.splice(index, 1);
+                    // ★ 修正: .splice() の代わりに、.filter() で新しい配列を作成
+                    this.lists = this.lists.filter(l => l.id !== list.id);
                 })
                 .catch(error => console.error("Error:", error));
             },
@@ -675,6 +691,183 @@
                 });
             },
 
+            submitNewLabel(detail) {
+                // detail = { board: {...}, name: "...", color: "...", callback: () => {} }
+                if (detail.name.trim() === "") {
+                    alert("Label name is required.");
+                    return;
+                }
+
+                fetch(`/boards/${detail.board.id}/labels`, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-CSRF-TOKEN": document.querySelector("meta[name=\"csrf-token\"]").getAttribute("content")
+                    },
+                    body: JSON.stringify({ 
+                        name: detail.name,
+                        color: detail.color
+                    })
+                })
+                .then(response => {
+                    if (response.status === 422) { // バリデーションエラー
+                        // (コントローラーの Rule::unique() で重複をチェック)
+                        alert("Label name already exists or is invalid.");
+                        throw new Error("Validation failed");
+                    }
+                    if (!response.ok) {
+                        throw new Error("Failed to create label.");
+                    }
+                    return response.json();
+                })
+                .then(newLabel => {
+                    // ★ 成功時の処理 ★
+                    
+                    // 1. 親コンポーネントのラベル一覧 (boardLabels) に追加
+                    this.boardLabels.push(newLabel);
+                    
+                    // 2. ポップオーバーのフォームをリセット (コールバックを実行)
+                    detail.callback();
+                })
+                .catch(error => {
+                    console.error("Error creating label:", error);
+                    if (error.message !== "Validation failed") {
+                        alert("An error occurred while creating the label.");
+                    }
+                });
+            },
+
+            updateLabel(detail) {
+                // detail = { label: {...}, name: "...", color: "...", callback: () => {} }
+                if (detail.name.trim() === "") {
+                    alert("Label name is required.");
+                    return;
+                }
+
+                fetch(`/labels/${detail.label.id}`, {
+                    method: "PATCH",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-CSRF-TOKEN": document.querySelector("meta[name=\"csrf-token\"]").getAttribute("content")
+                    },
+                    body: JSON.stringify({ 
+                        name: detail.name,
+                        color: detail.color
+                    })
+                })
+                .then(response => {
+                    if (response.status === 422) {
+                        alert("Label name already exists or is invalid.");
+                        throw new Error("Validation failed");
+                    }
+                    if (!response.ok) {
+                        throw new Error("Failed to update label.");
+                    }
+                    return response.json();
+                })
+                .then(updatedLabel => {
+                    // ★ 成功時の処理 ★
+                    // 1. boardLabels 配列内の該当ラベルを置き換え
+                    const index = this.boardLabels.findIndex(l => l.id === updatedLabel.id);
+                    if (index > -1) {
+                        this.boardLabels[index] = updatedLabel;
+                    }
+                    // (※ boardLabels がリアクティブなので、モーダル内の表示も自動更新される)
+                    
+                    // 2. ポップオーバーのフォームをリセット (コールバックを実行)
+                    detail.callback();
+                })
+                .catch(error => {
+                    console.error("Error updating label:", error);
+                    if (error.message !== "Validation failed") {
+                        alert("An error occurred while updating the label.");
+                    }
+                });
+            },
+
+            // ★ ここから追加 (ラベル削除メソッド)
+            deleteLabel(detail) {
+                // detail = { label: {...}, callback: () => {} }
+                if (!confirm("Are you sure you want to delete the label \"" + detail.label.name + "\"? This will remove it from all cards on this board.")) {
+                    return;
+                }
+
+                fetch(`/labels/${detail.label.id}`, {
+                    method: "DELETE",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-CSRF-TOKEN": document.querySelector("meta[name=\"csrf-token\"]").getAttribute("content")
+                    }
+                })
+                .then(response => {
+                    if (!response.ok) { // 204 No Content も .ok は true
+                        throw new Error("Failed to delete label.");
+                    }
+                    
+                    // ★ 成功時の処理 ★
+                    // 1. boardLabels 配列から該当ラベルを削除
+                    const index = this.boardLabels.findIndex(l => l.id === detail.label.id);
+                    if (index > -1) {
+                        this.boardLabels.splice(index, 1);
+                    }
+                    
+                    // 2. ポップオーバーのフォームをリセット (コールバックを実行)
+                    detail.callback();
+                })
+                .catch(error => {
+                    console.error("Error deleting label:", error);
+                    alert("An error occurred while deleting the label.");
+                });
+            },
+
+            toggleLabel(detail) {
+                // detail = { card: {...}, label: {...}, isAttached: true/false }
+                
+                let endpoint = `/cards/${detail.card.id}/labels/${detail.label.id}`;
+                let method = detail.isAttached ? "POST" : "DELETE"; // チェックされたらPOST, 外されたらDELETE
+
+                fetch(endpoint, {
+                    method: method,
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-CSRF-TOKEN": document.querySelector("meta[name=\"csrf-token\"]").getAttribute("content")
+                    }
+                })
+                .then(response => {
+                    // 1. モーダル内のデータを手動で更新
+                    if (detail.isAttached) {
+                        this.selectedCardData.labels.push(detail.label);
+                    } else {
+                        const index = this.selectedCardData.labels.findIndex(l => l.id === detail.label.id);
+                        if (index > -1) {
+                            this.selectedCardData.labels.splice(index, 1);
+                        }
+                    }
+
+                    // 2. メインボード(背景)のデータも更新 (即時反映のため)
+                    // (detail.card は APIから取得した selectedCardData)
+                    const listIndex = this.lists.findIndex(l => l.id == detail.card.list.id);
+                    if (listIndex > -1) {
+                        const cardIndex = this.lists[listIndex].cards.findIndex(c => c.id == detail.card.id);
+                        if (cardIndex > -1) {
+                            // モーダルと全く同じロジックで背景の "labels" 配列も更新
+                            if (detail.isAttached) {
+                                this.lists[listIndex].cards[cardIndex].labels.push(detail.label);
+                            } else {
+                                const labelIndex = this.lists[listIndex].cards[cardIndex].labels.findIndex(l => l.id === detail.label.id);
+                                if (labelIndex > -1) {
+                                    this.lists[listIndex].cards[cardIndex].labels.splice(labelIndex, 1);
+                                }
+                            }
+                        }
+                    }
+                })
+                .catch(error => {
+                    console.error("Error toggling label:", error);
+                    alert("An error occurred while toggling the label.");
+                });
+            },
+
             deleteCard(card, list) {
                 // ユーザーに確認
                 if (!confirm("Are you sure you want to delete this card: \"" + card.title + "\"?")) {
@@ -815,6 +1008,18 @@
                                  :data-card-id="card.id">
 
                                 <div class="p-3">
+                                    {{-- ★★★ ここから挿入: ラベルバー表示 ★★★ --}}
+                                    <div class="flex flex-wrap gap-1 mb-2" x-show="card.labels.length > 0">
+                                        <template x-for="label in card.labels" :key="label.id">
+                                            {{-- Trello風の小さなカラーバー --}}
+                                            <span :class="label.color"
+                                                  :title="label.name" {{-- ホバーでラベル名表示 --}}
+                                                  class="h-2 w-10 rounded-full">
+                                                {{-- 中身は空 --}}
+                                            </span>
+                                        </template>
+                                    </div>
+                                    {{-- ★★★ 挿入ここまで ★★★ --}}
                                     {{-- 3. @click を削除 (親divに移動したため) --}}
                                     <p class="text-sm text-gray-800 dark:text-gray-100" 
                                        x-text="card.title">
@@ -840,7 +1045,7 @@
                             <div class="mt-2">
 
                                 <div x-show="newCardForm.listId !== list.id">
-                                    <button @click="newCardForm.listId = list.id; $nextTick(() => $refs['newCardTitleInput_' + list.id].focus())"
+                                    <button @click="newCardForm.listId = list.id; $nextTick(() => $nextTick(() => { if ($refs['newCardTitleInput_' + list.id]) { $refs['newCardTitleInput_' + list.id].focus(); } }))"
                                             class="w-full p-2 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-500 dark:text-gray-400 text-sm font-medium text-left">
                                         + Add a card
                                     </button>

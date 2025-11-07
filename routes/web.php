@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Notification;
 use App\Notifications\TestNotification;
 use App\Http\Controllers\CardController;
 use App\Http\Controllers\CommentController;
+use App\Http\Controllers\LabelController;
 
 /*
 |--------------------------------------------------------------------------
@@ -63,6 +64,20 @@ Route::middleware('auth')->group(function () {
     // ★ ここから追加: コメントの更新と削除
     Route::patch('/comments/{comment}', [CommentController::class, 'update'])->name('comments.update');
     Route::delete('/comments/{comment}', [CommentController::class, 'destroy'])->name('comments.destroy');
+
+    // ★ ここから追加: ラベル管理 (ボードに紐づく)
+    // ボードの全ラベルを取得
+    Route::get('/boards/{board}/labels', [LabelController::class, 'index'])->name('labels.index');
+    // 新しいラベルを作成
+    Route::post('/boards/{board}/labels', [LabelController::class, 'store'])->name('labels.store');
+    
+    // ★ ここから追加: ラベルの更新と削除
+    Route::patch('/labels/{label}', [LabelController::class, 'update'])->name('labels.update');
+    Route::delete('/labels/{label}', [LabelController::class, 'destroy'])->name('labels.destroy');
+
+    // ★ ここから追加: カードへのラベル割り当て・解除
+    Route::post('/cards/{card}/labels/{label}', [LabelController::class, 'attachLabel'])->name('labels.attach');
+    Route::delete('/cards/{card}/labels/{label}', [LabelController::class, 'detachLabel'])->name('labels.detach');
 
     // 通知 (API)
     Route::get('/notifications', [NotificationController::class, 'index'])->name('notifications.index');
