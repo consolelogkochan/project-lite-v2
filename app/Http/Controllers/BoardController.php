@@ -6,6 +6,9 @@ use App\Models\Board;
 use App\Http\Requests\BoardStoreRequest;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\View\View;
+use Illuminate\Http\RedirectResponse; 
+use Illuminate\Http\Request; 
+use Illuminate\Support\Facades\Gate;
 
 
 class BoardController extends Controller
@@ -62,5 +65,40 @@ class BoardController extends Controller
             'board' => $board,
             'lists' => $lists, // ★ 変更点: $lists を追加
         ]);
+    }
+
+    /**
+     * ボードを削除する (API / Web)
+     * ★ このメソッドを追加
+     */
+    public function destroy(Request $request, Board $board): RedirectResponse
+    {
+        // ★ 2. 認可チェック: ボードのオーナー（owner_id）本人であるか
+        // (簡易チェック)
+        if (Auth::id() !== $board->owner_id) {
+            // (将来的に Gate::authorize('delete', $board); に置き換える)
+            
+            // APIリクエストの場合 (JSONを期待している場合)
+            if ($request->expectsJson()) {
+                return response()->json(['message' => 'Forbidden'], 403);
+            }
+            // 通常のWebリクエストの場合
+            return redirect()->route('dashboard')->with('error', 'You do not have permission to delete this board.');
+        }
+
+        // ★ 3. ボードを削除
+        // マイグレーションで onDelete('cascade') を設定していれば、
+        // 関連するリスト、カード、ラベル、コメントもすべて連鎖削除される
+        $board->delete();
+
+        // ★ 4. 成功時の応答
+        
+        // APIリクエストの場合
+        if ($request->expectsJson()) {
+            return response()->noContent(); // 204 No Content
+        }
+        
+        // 通常のWebリクエストの場合 (ダッシュボードに戻す)
+        return redirect()->route('dashboard')->with('status', 'Board deleted successfully.');
     }
 }

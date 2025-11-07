@@ -36,6 +36,8 @@ Route::middleware('auth')->group(function () {
     // ボード
     Route::post('/boards', [BoardController::class, 'store'])->name('boards.store');
     Route::get('/boards/{board}', [BoardController::class, 'show'])->name('boards.show');
+    // ★ ここから追加: ボードの削除
+    Route::delete('/boards/{board}', [BoardController::class, 'destroy'])->name('boards.destroy');
 
     // リスト
     Route::post('/boards/{board}/lists', [ListController::class, 'store'])->name('lists.store');
