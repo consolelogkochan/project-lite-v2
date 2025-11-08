@@ -122,7 +122,7 @@
                             <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Description</h3>
 
                             {{-- 説明文表示 (非編集時) --}}
-                            <div x-show="!editingCardDescription">
+                            <div x-show="!editingCardDescription" class="mt-2">
                                 {{-- 説明文が null または空の場合 --}}
                                 <div x-show="selectedCardData && !selectedCardData.description" x-cloak>
                                     <button 
