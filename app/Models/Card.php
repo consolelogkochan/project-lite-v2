@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use App\Models\BoardList;
 use App\Models\Comment;
 use App\Models\Label;
+use App\Models\Checklist;
 
 class Card extends Model
 {
@@ -83,5 +84,15 @@ class Card extends Model
     {
         // 'card_label' 中間テーブルを経由
         return $this->belongsToMany(Label::class, 'card_label');
+    }
+
+    /**
+     * このカードに紐付いているチェックリスト
+     * ★ 2. このメソッドを追加
+     */
+    public function checklists()
+    {
+        // 通常、チェックリストは作成順に表示する
+        return $this->hasMany(Checklist::class)->orderBy('created_at');
     }
 }

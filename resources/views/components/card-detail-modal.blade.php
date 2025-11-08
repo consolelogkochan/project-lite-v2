@@ -167,6 +167,214 @@
                         </div>
                     </div>
                     {{-- ★★★ 説明セクションここまで ★★★ --}}
+                    {{-- ★★★ ここからチェックリストセクション ★★★ --}}
+                    {{-- selectedCardData がロードされ、checklists が存在する場合にループ --}}
+                    <template x-for="checklist in (selectedCardData ? selectedCardData.checklists : [])" :key="checklist.id">
+                        <div x-data='{ 
+                                showAddItemForm: false, 
+                                newItemContent: "",
+                                // ★ ここから追加
+                                initItemSortable(el) {
+                                    // el = アイテム一覧のコンテナ (mt-3 space-y-2)
+                                    new Sortable(el, {
+                                        group: "checklist-items", // (グループ名は checklist.id ごとに分けても良いが、まずは共通で)
+                                        draggable: ".checklist-item", // ★ 1. .checklist-item クラスをドラッグ対象に
+                                        animation: 150,
+                                        onEnd: (event) => {
+                                            // ★ 2. ドラッグ終了時にカスタムイベントを発火
+                                            this.$dispatch("submit-checklist-item-sort", {
+                                                checklistId: checklist.id,
+                                                itemId: event.item.dataset.itemId,
+                                                newPosition: event.newIndex,
+                                                oldPosition: event.oldIndex
+                                            });
+                                        }
+                                    });
+                                }
+                                // ★ 追加ここまで 
+                             }'
+                             class="flex items-start space-x-3">
+                            {{-- アイコン --}}
+                            <div class="flex-shrink-0 pt-1">
+                                <svg class="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                            </div>
+
+                            <div class="flex-grow min-w-0">
+                                {{-- ヘッダー: タイトルと削除ボタン --}}
+                                <div class="flex items-center justify-between mb-2"> {{-- ★ mb-2 を追加 --}}
+                                    
+                                    {{-- ★★★ タイトル表示 (非編集時) ★★★ --}}
+                                    <h3 x-show="editingChecklistId !== checklist.id"
+                                        {{-- ★ 修正: 二重の $nextTick と if($refs) で保護 --}}
+                                        @click="editingChecklistId = checklist.id; editedChecklistTitle = checklist.title; $nextTick(() => $nextTick(() => { if ($refs['editChecklistTitleInput_' + checklist.id]) { $refs['editChecklistTitleInput_' + checklist.id].focus(); } }))"
+                                        class="text-lg font-semibold text-gray-900 dark:text-white cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700 rounded-md p-1 -m-1"
+                                        x-text="checklist.title">
+                                    </h3>
+
+                                    {{-- ★★★ タイトル編集 (編集時) ★★★ --}}
+                                    <form x-show="editingChecklistId === checklist.id" x-cloak
+                                          @submit.prevent="$dispatch('submit-edit-checklist', { 
+                                              checklist: checklist, 
+                                              title: editedChecklistTitle, 
+                                              callback: () => { editingChecklistId = null; editedChecklistTitle = ''; } 
+                                          })"
+                                          class="flex-grow">
+                                        <input type="text" 
+                                               x-model="editedChecklistTitle"
+                                               :x-ref="'editChecklistTitleInput_' + checklist.id"
+                                               @keydown.escape.prevent="editingChecklistId = null; editedChecklistTitle = ''"
+                                               @blur="$event.target.form.requestSubmit()" {{-- blurで自動保存 --}}
+                                               class="block w-full text-lg font-semibold rounded-md border-blue-500 shadow-sm bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:ring-blue-500 focus:border-blue-500 p-1 -m-1">
+                                    </form>
+
+                                    {{-- ★★★ 削除ボタン (非編集時のみ表示) ★★★ --}}
+                                    <button 
+                                        x-show="editingChecklistId !== checklist.id"
+                                        @click.prevent="$dispatch('submit-delete-checklist', { checklist: checklist })"
+                                        class="p-1 text-gray-400 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700 text-sm font-medium hover:text-red-600 dark:hover:text-red-400">
+                                        Delete
+                                    </button>
+                                </div>
+
+                                {{-- 進捗メーター (プログレスバー) --}}
+                                <div class="mt-2 flex items-center space-x-2">
+                                    {{-- (ロジック: (完了数 / 全体数) * 100) --}}
+                                    <span class="text-xs text-gray-500 dark:text-gray-400"
+                                          {{-- ★ 修正: checklist.items.length が 0 かどうかをチェック --}}
+                                          x-text="checklist.items.length === 0 ? '0%' : Math.round(
+                                              (checklist.items.filter(item => item.is_completed).length / checklist.items.length) * 100
+                                          ) + '%'">
+                                    </span>
+                                    <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                                        <div class="bg-blue-600 h-2 rounded-full"
+                                             {{-- ★ 修正: checklist.items.length が 0 かどうかをチェック --}}
+                                             :style="checklist.items.length === 0 ? 'width: 0%' : 'width: ' + Math.round(
+                                                 (checklist.items.filter(item => item.is_completed).length / checklist.items.length) * 100
+                                             ) + '%'">
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                {{-- ★★★ ここからアイテム一覧 ★★★ --}}
+                                <div class="mt-3 space-y-2" x-init="initItemSortable($el)"> {{-- ★ 1. SortableJS を初期化 --}}
+                                    {{-- アイテム一覧ループ --}}
+                                    <template x-for="item in checklist.items" :key="item.id">
+                                        {{-- ★ 2. checklist-item クラスと data-item-id を追加 --}}
+                                        <div class="checklist-item flex items-start space-x-2 group group cursor-move" {{-- ★ 3. cursor-move を追加 --}}
+                                             :data-item-id="item.id"> 
+                                            
+                                            {{-- 1. チェックボックス --}}
+                                            <input type="checkbox" 
+                                                   :checked="item.is_completed"
+                                                   @change="$dispatch('toggle-checklist-item', { 
+                                                       item: item,
+                                                       isCompleted: $event.target.checked 
+                                                   })"
+                                                   class="rounded border-gray-300 dark:border-gray-600 text-blue-600 shadow-sm focus:ring-blue-500 mt-1"> {{-- ★ mt-1 を追加 --}}
+                                            
+                                            {{-- ★★★ ここからインライン編集ブロック ★★★ --}}
+                                            <div class="flex-grow">
+                                                {{-- 2a. コンテンツ表示 (非編集時) --}}
+                                                <div x-show="editingChecklistItemId !== item.id"
+                                                     @click="editingChecklistItemId = item.id; editedChecklistItemContent = item.content; $nextTick(() => $refs['editItemInput_' + item.id].focus())"
+                                                     x-text="item.content"
+                                                     :class="{ 'line-through text-gray-500 dark:text-gray-400': item.is_completed }"
+                                                     class="text-sm text-gray-900 dark:text-gray-100 p-1.5 -m-1.5 rounded-md cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700">
+                                                </div>
+
+                                                {{-- 2b. コンテンツ編集 (編集時) --}}
+                                                <form x-show="editingChecklistItemId === item.id" x-cloak
+                                                      @submit.prevent="$dispatch('submit-edit-checklist-item', { 
+                                                          item: item, 
+                                                          content: editedChecklistItemContent, 
+                                                          callback: () => { editingChecklistItemId = null; editedChecklistItemContent = ''; } 
+                                                      })">
+                                                    
+                                                    <textarea x-model="editedChecklistItemContent"
+                                                              :x-ref="'editItemInput_' + item.id"
+                                                              @keydown.enter.prevent="$event.target.form.requestSubmit()"
+                                                              @keydown.escape.prevent="editingChecklistItemId = null; editedChecklistItemContent = ''"
+                                                              rows="2"
+                                                              class="block w-full text-sm rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:ring-blue-500 focus:border-blue-500 shadow-sm"
+                                                              placeholder="Edit item..."></textarea>
+                                                    
+                                                    <div class="mt-2 space-x-2">
+                                                        <button type="submit"
+                                                                x-bind:disabled="editedChecklistItemContent.trim() === '' || editedChecklistItemContent.trim() === item.content"
+                                                                class="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500
+                                                                       disabled:opacity-50 disabled:cursor-not-allowed">
+                                                            Save
+                                                        </button>
+                                                        <button @click="editingChecklistItemId = null; editedChecklistItemContent = ''"
+                                                                type="button"
+                                                                class="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 text-sm font-medium rounded-md hover:bg-gray-300 dark:hover:bg-gray-600 focus:outline-none">
+                                                            Cancel
+                                                        </button>
+                                                    </div>
+                                                </form>
+                                            </div>
+                                            {{-- ★★★ インライン編集ブロックここまで ★★★ --}}
+
+                                            {{-- 3. 削除ボタン (非編集時のみ表示) --}}
+                                            <button x-show="editingChecklistItemId !== item.id"
+                                                    @click.prevent="$dispatch('delete-checklist-item', { 
+                                                        item: item,
+                                                        checklist: checklist 
+                                                    })"
+                                                    class="p-1 text-gray-400 hover:text-red-500 dark:hover:text-red-400 rounded-md opacity-0 group-hover:opacity-100">
+                                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                                            </button>
+                                        </div>
+                                    </template>
+                                </div>
+                                {{-- ★★★ アイテム一覧ここまで ★★★ --}}
+
+
+                                {{-- ★★★ ここからアイテム追加フォーム ★★★ --}}
+                                <div class="mt-2">
+                                    {{-- 「Add an item」ボタン (フォーム非表示時) --}}
+                                    <button x-show="!showAddItemForm" 
+                                            @click="showAddItemForm = true; $nextTick(() => $nextTick(() => { if ($refs['newItemInput_' + checklist.id]) { $refs['newItemInput_' + checklist.id].focus(); } }))"
+                                            class="px-3 py-1.5 text-sm bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-md">
+                                        Add an item
+                                    </button>
+
+                                    {{-- アイテム追加フォーム (表示時) --}}
+                                    <form x-show="showAddItemForm" x-cloak
+                                          @submit.prevent="$dispatch('submit-new-checklist-item', { 
+                                              checklist: checklist, 
+                                              content: newItemContent, 
+                                              callback: (error = false) => { if (!error) newItemContent = ''; } 
+                                          })">
+                                        
+                                        <textarea x-model="newItemContent"
+                                                  :x-ref="'newItemInput_' + checklist.id"
+                                                  @keydown.enter.prevent="$event.target.form.requestSubmit()"
+                                                  rows="2"
+                                                  class="block w-full text-sm rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:ring-blue-500 focus:border-blue-500 shadow-sm"
+                                                  placeholder="Add an item..."></textarea>
+                                        
+                                        <div class="mt-2 space-x-2">
+                                            <button type="submit"
+                                                    x-bind:disabled="newItemContent.trim() === ''"
+                                                    class="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500
+                                                           disabled:opacity-50 disabled:cursor-not-allowed">
+                                                Add
+                                            </button>
+                                            <button @click="showAddItemForm = false; newItemContent = ''"
+                                                    type="button"
+                                                    class="p-2 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-white rounded-md">
+                                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                                            </button>
+                                        </div>
+                                    </form>
+                                </div>
+                                {{-- ★★★ アイテム追加フォームここまで ★★★ --}}
+
+                            </div>
+                        </div>
+                    </template>
+                    {{-- ★★★ チェックリストセクションここまで ★★★ --}}
                     {{-- ★★★ ここからコメントセクション ★★★ --}}
                     <div class="flex items-start space-x-3">
                         {{-- アイコン --}}
@@ -480,10 +688,56 @@
                             </div>
                         </div>
                         {{-- Checklist --}}
-                        <button type="button" class="w-full flex items-center bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 text-sm font-medium rounded-md px-3 py-2 mt-3">
-                            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                            Checklist
-                        </button>
+                        <div x-data='{ 
+                                open: false, 
+                                checklistTitle: "Checklist" 
+                             }' 
+                             class="relative w-full mt-3"
+                        >
+                            {{-- 1. ボタン本体 --}}
+                            <button @click="open = !open; if(open) { $nextTick(() => $refs.checklistTitleInput.focus().select()) }" 
+                                    type="button" 
+                                    class="w-full flex items-center bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 text-sm font-medium rounded-md px-3 py-2">
+                                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path></svg>
+                                Checklist
+                            </button>
+
+                            {{-- 2. ポップオーバー本体 --}}
+                            <div x-show="open"
+                                 @click.away="open = false"
+                                 x-transition
+                                 x-cloak
+                                 class="absolute z-20 mt-1 w-72 bg-white dark:bg-gray-900 rounded-md shadow-lg border border-gray-200 dark:border-gray-700"
+                            >
+                                <div class="p-4">
+                                    <h4 class="text-center text-sm font-medium text-gray-500 dark:text-gray-400 mb-3">Add checklist</h4>
+                                    <button @click="open = false" type="button" class="absolute top-2 right-2 p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                                    </button>
+
+                                    {{-- タイトル入力フォーム --}}
+                                    <form @submit.prevent="$dispatch('submit-new-checklist', { 
+                                                card: selectedCardData, 
+                                                title: checklistTitle, 
+                                                callback: () => { open = false; checklistTitle = 'Checklist'; } 
+                                            })">
+                                        <div>
+                                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Title</label>
+                                            <input type="text" 
+                                                   x-ref="checklistTitleInput"
+                                                   x-model="checklistTitle"
+                                                   class="mt-1 block w-full text-sm rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-blue-500 focus:border-blue-500"
+                                                   placeholder="Checklist">
+                                        </div>
+                                        <div class="mt-4">
+                                            <button type="submit" class="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                                                Add
+                                            </button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
                         {{-- Dates (Due Date) --}}
                         <div x-data='{ 
                                 open: false, 

@@ -53,6 +53,14 @@
         @submit-edit-label.window="updateLabel($event.detail)" 
         @submit-delete-label.window="deleteLabel($event.detail)"
         @toggle-label.window="toggleLabel($event.detail)"
+        @submit-new-checklist.window="submitNewChecklist($event.detail)"
+        @submit-new-checklist-item.window="submitNewChecklistItem($event.detail)"
+        @toggle-checklist-item.window="toggleChecklistItem($event.detail)" 
+        @delete-checklist-item.window="deleteChecklistItem($event.detail)"
+        @submit-edit-checklist-item.window="updateChecklistItem($event.detail)"
+        @submit-checklist-item-sort.window="handleChecklistItemSort($event.detail)"
+        @submit-edit-checklist.window="updateChecklist($event.detail)"
+        @submit-delete-checklist.window="deleteChecklist($event.detail)"
         x-data='{
             lists: [],
             newCardForm: { // ★ 追加: カード追加フォームの状態
@@ -69,6 +77,10 @@
             editedCardDescription: "", // 編集用の説明文
             editingCommentId: null, // 編集中のコメントID
             editedCommentContent: "", // 編集用のコメント本文
+            editingChecklistItemId: null, // 編集中のアイテムID
+            editedChecklistItemContent: "", // 編集用のアイテム本文
+            editingChecklistId: null, // 編集中のチェックリストID
+            editedChecklistTitle: "", // 編集用のチェックリストタイトル
             addingList: false,
             boardLabels: [],
             newListTitle: "",
@@ -125,6 +137,10 @@
                         this.editedCardDescription = "";
                         this.editingCommentId = null;
                         this.editedCommentContent = "";
+                        this.editingChecklistItemId = null;
+                        this.editedChecklistItemContent = "";
+                        this.editingChecklistId = null;
+                        this.editedChecklistTitle = "";
                     }
                 });
             },
@@ -865,6 +881,324 @@
                 .catch(error => {
                     console.error("Error toggling label:", error);
                     alert("An error occurred while toggling the label.");
+                });
+            },
+
+            submitNewChecklist(detail) {
+                // detail = { card: {...}, title: "...", callback: () => {} }
+                if (detail.title.trim() === "") {
+                    alert("Checklist title is required.");
+                    return;
+                }
+
+                fetch(`/cards/${detail.card.id}/checklists`, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-CSRF-TOKEN": document.querySelector("meta[name=\"csrf-token\"]").getAttribute("content")
+                    },
+                    body: JSON.stringify({ title: detail.title })
+                })
+                .then(response => {
+                    if (response.status === 422) {
+                        throw new Error("Validation failed");
+                    }
+                    if (!response.ok) {
+                        throw new Error("Failed to create checklist.");
+                    }
+                    return response.json();
+                })
+                .then(newChecklist => {
+                    // ★ 成功時の処理 ★
+                    // 1. モーダル内の checklists 配列に追加
+                    this.selectedCardData.checklists.push(newChecklist);
+                    
+                    // 2. ポップオーバーのフォームをリセット (コールバックを実行)
+                    detail.callback();
+                })
+                .catch(error => {
+                    console.error("Error creating checklist:", error);
+                    alert("An error occurred while creating the checklist.");
+                });
+            },
+
+            submitNewChecklistItem(detail) {
+                // detail = { checklist: {...}, content: "...", callback: () => {} }
+                if (detail.content.trim() === "") {
+                    detail.callback(true); // エラーだがフォームは閉じる
+                    return;
+                }
+
+                fetch(`/checklists/${detail.checklist.id}/items`, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-CSRF-TOKEN": document.querySelector("meta[name=\"csrf-token\"]").getAttribute("content")
+                    },
+                    body: JSON.stringify({ content: detail.content })
+                })
+                .then(response => {
+                    if (response.status === 422) {
+                        throw new Error("Validation failed");
+                    }
+                    if (!response.ok) {
+                        throw new Error("Failed to create checklist item.");
+                    }
+                    return response.json();
+                })
+                .then(newItem => {
+                    // ★ 成功時の処理 ★
+                    // 1. モーダル内の checklists[...].items 配列に追加
+                    // (※ $watch("selectedCardId", ...) で $watch をネストできないため、
+                    //    selectedCardData を直接変更する)
+                    const checklistIndex = this.selectedCardData.checklists.findIndex(c => c.id === detail.checklist.id);
+                    if (checklistIndex > -1) {
+                        this.selectedCardData.checklists[checklistIndex].items.push(newItem);
+                    }
+                    
+                    // 2. ポップオーバーのフォームをリセット (コールバックを実行)
+                    detail.callback();
+                })
+                .catch(error => {
+                    console.error("Error creating checklist item:", error);
+                    alert("An error occurred while creating the item.");
+                });
+            },
+
+            toggleChecklistItem(detail) {
+                // detail = { item: {...}, isAttached: true/false }
+                
+                fetch(`/checklist-items/${detail.item.id}`, {
+                    method: "PATCH",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-CSRF-TOKEN": document.querySelector("meta[name=\"csrf-token\"]").getAttribute("content")
+                    },
+                    body: JSON.stringify({ is_completed: detail.isCompleted }) // is_completed を送信
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error("Failed to update checklist item status.");
+                    }
+                    return response.json();
+                })
+                .then(updatedItem => {
+                    // ★ 成功時の処理 ★
+                    // UIの "is_completed" 状態を、サーバーからのレスポンスで上書き（同期）する
+                    detail.item.is_completed = updatedItem.is_completed;
+                    // (プログレスバーは item.is_completed を参照しているため、自動で更新される)
+                })
+                .catch(error => {
+                    console.error("Error toggling checklist item:", error);
+                    alert("An error occurred while updating the item.");
+                    // エラー時はチェックボックスを元に戻す
+                    detail.item.is_completed = !detail.isCompleted; 
+                });
+            },
+
+            deleteChecklistItem(detail) {
+                // detail = { item: {...}, checklist: {...} }
+                if (!confirm("Are you sure you want to delete this item?")) {
+                    return;
+                }
+
+                fetch(`/checklist-items/${detail.item.id}`, {
+                    method: "DELETE",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-CSRF-TOKEN": document.querySelector("meta[name=\"csrf-token\"]").getAttribute("content")
+                    }
+                })
+                .then(response => {
+                    if (!response.ok) { // 204 No Content も .ok は true
+                        throw new Error("Failed to delete checklist item.");
+                    }
+                    
+                    // ★ 成功時の処理 ★
+                    // checklist.items 配列から該当アイテムを削除
+                    const index = detail.checklist.items.findIndex(i => i.id === detail.item.id);
+                    if (index > -1) {
+                        detail.checklist.items.splice(index, 1);
+                    }
+                })
+                .catch(error => {
+                    console.error("Error deleting checklist item:", error);
+                    alert("An error occurred while deleting the item.");
+                });
+            },
+
+            updateChecklistItem(detail) {
+                // detail = { item: {...}, content: "...", callback: () => {} }
+                const newContent = detail.content.trim();
+
+                // 内容が空、または変更がない場合は、編集をキャンセルするだけ
+                if (newContent === "" || newContent === detail.item.content) {
+                    detail.callback(); // フォームを閉じる
+                    return;
+                }
+
+                fetch(`/checklist-items/${detail.item.id}`, {
+                    method: "PATCH",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-CSRF-TOKEN": document.querySelector("meta[name=\"csrf-token\"]").getAttribute("content")
+                    },
+                    body: JSON.stringify({ content: newContent }) // content を送信
+                })
+                .then(response => {
+                    if (response.status === 422) {
+                        throw new Error("Validation failed");
+                    }
+                    if (!response.ok) {
+                        throw new Error("Failed to update checklist item.");
+                    }
+                    return response.json();
+                })
+                .then(updatedItem => {
+                    // ★ 成功時の処理 ★
+                    // 1. UIの "content" 状態を、サーバーからのレスポンスで上書き（同期）
+                    detail.item.content = updatedItem.content;
+                    
+                    // 2. フォームを閉じる (コールバックを実行)
+                    detail.callback();
+                })
+                .catch(error => {
+                    console.error("Error updating checklist item:", error);
+                    alert("An error occurred while updating the item.");
+                    // エラー時もフォームを閉じる
+                    detail.callback();
+                });
+            },
+
+            handleChecklistItemSort(detail) {
+                // detail = { checklistId: ..., itemId: ..., newPosition: ..., oldPosition: ... }
+
+                // 1. ローカルの Alpine.js データを即時更新 (UIの即時反映)
+                const checklistIndex = this.selectedCardData.checklists.findIndex(c => c.id == detail.checklistId);
+                if (checklistIndex === -1) {
+                    console.error("Could not find checklist");
+                    return;
+                }
+                const checklist = this.selectedCardData.checklists[checklistIndex];
+
+                // ★★★ ここから修正 (強制再描画ロジック) ★★★
+                
+                // a. 現在の items 配列の「コピー」を作成
+                let items = Array.from(checklist.items);
+
+                // b. コピーをD&Dの結果に基づいて並び替える
+                const [movedItem] = items.splice(detail.oldPosition, 1);
+                if (!movedItem) {
+                    console.error("SortableJS reported an invalid oldPosition.");
+                    return; // 同期ズレによるエラーを防止
+                }
+                items.splice(detail.newPosition, 0, movedItem);
+                
+                // c. checklist.items を一度リセット（Alpine.jsに「変更」を通知）
+                checklist.items = [];
+
+                // d. $nextTick で、並び替えた新しい配列をセット（強制再描画）
+                this.$nextTick(() => {
+                    checklist.items = items;
+                });
+                
+                // ★★★ 修正ここまで ★★★
+
+                // 2. サーバーに新しい順序を送信 (API呼び出し)
+                
+                // APIが要求する形式 [1, 3, 2] にデータを整形
+                // ★ 修正: "checklist.items" ではなく、並び替え済みの "items" を参照
+                const orderedItemIds = items.map(item => item.id);
+
+                fetch("{{ route('checklist_items.updateOrder') }}", {
+                    method: "PATCH",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-CSRF-TOKEN": document.querySelector("meta[name=\"csrf-token\"]").getAttribute("content")
+                    },
+                    body: JSON.stringify({
+                        checklist_id: detail.checklistId,
+                        ordered_item_ids: orderedItemIds
+                    })
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error("Failed to update item order on server.");
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    console.log("Checklist item order updated:", data.message);
+                })
+                .catch(error => {
+                    console.error("Error updating item order:", error);
+                    alert("An error occurred while saving the new order. Please reload the page.");
+                });
+            },
+
+            updateChecklist(detail) {
+                // detail = { checklist: {...}, title: "...", callback: () => {} }
+                const newTitle = detail.title.trim();
+
+                if (newTitle === "" || newTitle === detail.checklist.title) {
+                    detail.callback(); // フォームを閉じる
+                    return;
+                }
+
+                fetch(`/checklists/${detail.checklist.id}`, {
+                    method: "PATCH",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-CSRF-TOKEN": document.querySelector("meta[name=\"csrf-token\"]").getAttribute("content")
+                    },
+                    body: JSON.stringify({ title: newTitle }) // title を送信
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error("Failed to update checklist.");
+                    }
+                    return response.json();
+                })
+                .then(updatedChecklist => {
+                    // ★ 成功時の処理 ★
+                    detail.checklist.title = updatedChecklist.title;
+                    detail.callback();
+                })
+                .catch(error => {
+                    console.error("Error updating checklist:", error);
+                    alert("An error occurred while updating the checklist.");
+                    detail.callback();
+                });
+            },
+
+            deleteChecklist(detail) {
+                // detail = { checklist: {...} }
+                if (!confirm("Are you sure you want to delete the checklist \"" + detail.checklist.title + "\"? This will delete all items within it.")) {
+                    return;
+                }
+
+                fetch(`/checklists/${detail.checklist.id}`, {
+                    method: "DELETE",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-CSRF-TOKEN": document.querySelector("meta[name=\"csrf-token\"]").getAttribute("content")
+                    }
+                })
+                .then(response => {
+                    if (!response.ok) { // 204 No Content も .ok は true
+                        throw new Error("Failed to delete checklist.");
+                    }
+                    
+                    // ★ 成功時の処理 ★
+                    // selectedCardData.checklists 配列から該当 checklist を削除
+                    const index = this.selectedCardData.checklists.findIndex(c => c.id === detail.checklist.id);
+                    if (index > -1) {
+                        this.selectedCardData.checklists.splice(index, 1);
+                    }
+                })
+                .catch(error => {
+                    console.error("Error deleting checklist:", error);
+                    alert("An error occurred while deleting the checklist.");
                 });
             },
 

@@ -50,8 +50,8 @@ class CardController extends Controller
         // 認可(Policy)チェックを将来追加する
 
         // カード情報、属するリスト、コメント（＋コメント投稿者）を一緒に読み込む
-        // ★ 修正: 'labels' (このカードに紐づくラベル) も Eager Loading
-        $card->load('list.board', 'comments.user', 'labels');
+        /// ★ 修正: 'checklists.items' (ネストしたリレーション) も Eager Loading
+        $card->load('list.board', 'comments.user', 'labels', 'checklists.items');
 
         return response()->json($card);
     }

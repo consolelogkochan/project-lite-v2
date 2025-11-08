@@ -11,6 +11,8 @@ use App\Notifications\TestNotification;
 use App\Http\Controllers\CardController;
 use App\Http\Controllers\CommentController;
 use App\Http\Controllers\LabelController;
+use App\Http\Controllers\ChecklistController;
+use App\Http\Controllers\ChecklistItemController;
 
 /*
 |--------------------------------------------------------------------------
@@ -80,6 +82,22 @@ Route::middleware('auth')->group(function () {
     // ★ ここから追加: カードへのラベル割り当て・解除
     Route::post('/cards/{card}/labels/{label}', [LabelController::class, 'attachLabel'])->name('labels.attach');
     Route::delete('/cards/{card}/labels/{label}', [LabelController::class, 'detachLabel'])->name('labels.detach');
+
+    // ★ ここから追加: チェックリストの作成
+    Route::post('/cards/{card}/checklists', [ChecklistController::class, 'store'])->name('checklists.store');
+    // ★ ここから追加: チェックリスト自体の更新と削除
+    Route::patch('/checklists/{checklist}', [ChecklistController::class, 'update'])->name('checklists.update');
+    Route::delete('/checklists/{checklist}', [ChecklistController::class, 'destroy'])->name('checklists.destroy');
+
+    // ★ ここから追加: チェックリストの「項目」のCRUD
+    // 項目（サブタスク）の追加
+    Route::post('/checklists/{checklist}/items', [ChecklistItemController::class, 'store'])->name('checklist_items.store');
+    // ★ 修正: D&D(update-order)を、ワイルドカード({item})よりも「上」に定義する
+    Route::patch('/checklist-items/update-order', [ChecklistItemController::class, 'updateOrder'])->name('checklist_items.updateOrder');
+    // ★ ここから追加: 項目の更新と削除
+    // (ChecklistItem だけで一意に特定できるため、ネスト不要)
+    Route::patch('/checklist-items/{item}', [ChecklistItemController::class, 'update'])->name('checklist_items.update');
+    Route::delete('/checklist-items/{item}', [ChecklistItemController::class, 'destroy'])->name('checklist_items.destroy');
 
     // 通知 (API)
     Route::get('/notifications', [NotificationController::class, 'index'])->name('notifications.index');
