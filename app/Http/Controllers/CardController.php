@@ -50,8 +50,8 @@ class CardController extends Controller
         // 認可(Policy)チェックを将来追加する
 
         // カード情報、属するリスト、コメント（＋コメント投稿者）を一緒に読み込む
-        /// ★ 修正: 'checklists.items' (ネストしたリレーション) も Eager Loading
-        $card->load('list.board', 'comments.user', 'labels', 'checklists.items');
+        // ★ 修正: 'coverImage' も Eager Loading
+        $card->load('list.board', 'comments.user', 'labels', 'checklists.items', 'attachments.user', 'coverImage');
 
         return response()->json($card);
     }
@@ -91,6 +91,18 @@ class CardController extends Controller
                 Rule::when($request->filled('end_date') && $request->filled('reminder_at'), [
                     'before_or_equal:end_date'
                 ]),
+            ],
+
+            'cover_image_id' => [
+                'sometimes',
+                'nullable',
+                'integer',
+                // cover_image_id が null でない場合、
+                // attachments テーブルに存在し、
+                // かつ、その attachment がこのカードに属していることを確認
+                Rule::exists('attachments', 'id')->where(function ($query) use ($card) {
+                    return $query->where('card_id', $card->id);
+                }),
             ],
         ]);
 

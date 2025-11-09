@@ -14,6 +14,7 @@
         x-transition:leave-start="opacity-100"
         x-transition:leave-end="opacity-0"
         @click="selectedCardId = null; selectedCardData = null" {{-- 修正: 閉じる時にデータもクリア --}}
+        @mousedown.stop
         class="fixed inset-0 bg-gray-900 bg-opacity-75 transition-opacity"
         aria-hidden="true"
     ></div>
@@ -27,6 +28,7 @@
         x-transition:leave="ease-in duration-200"
         x-transition:leave-start="opacity-100 scale-100"
         x-transition:leave-end="opacity-0 scale-95"
+        @mousedown.stop
         class="relative z-10 w-full max-w-3xl overflow-y-auto bg-gray-100 dark:bg-gray-800 rounded-lg shadow-xl"
         style="max-height: 90vh;"
     >
@@ -42,6 +44,17 @@
 
         {{-- 2. モーダルコンテンツ (データ取得完了後) --}}
         <div x-show="selectedCardData" x-cloak>
+
+            {{-- ★★★ ここからカバー画像表示エリアを追加 ★★★ --}}
+            {{-- selectedCardData.coverImage (リレーション) が存在する場合に表示 --}}
+            <template x-if="selectedCardData && selectedCardData.coverImage">
+                <div class="h-40 bg-gray-300 dark:bg-gray-700 rounded-t-lg">
+                    <img :src="selectedCardData.coverImage.file_url" 
+                         :alt="selectedCardData.coverImage.file_name"
+                         class="w-full h-full object-cover rounded-t-lg">
+                </div>
+            </template>
+            {{-- ★★★ カバー画像ここまで ★★★ --}}
             
             {{-- モーダルヘッダー --}}
             <div class="px-6 py-4 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
@@ -167,6 +180,133 @@
                         </div>
                     </div>
                     {{-- ★★★ 説明セクションここまで ★★★ --}}
+
+                    {{-- ★★★ ここから添付ファイルセクション ★★★ --}}
+                    {{-- selectedCardData がロードされ、attachments が存在する場合にのみ表示 --}}
+                    <div x-show="selectedCardData && selectedCardData.attachments && selectedCardData.attachments.length > 0" x-cloak>
+                        <div class="flex items-start space-x-3">
+                            {{-- アイコン --}}
+                            <div class="flex-shrink-0 pt-1">
+                                <svg class="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.414a4 4 0 00-5.656-5.656l-6.415 6.415a6 6 0 108.486 8.486L20.5 13"></path></svg>
+                            </div>
+
+                            <div class="flex-grow min-w-0">
+                                <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Attachments</h3>
+                                
+                                {{-- 添付ファイル一覧ループ --}}
+                                <div class="mt-3 space-y-4">
+                                    <template x-for="attachment in (selectedCardData ? selectedCardData.attachments : [])" :key="attachment.id">
+                                        <div class="flex items-start space-x-3">
+                                            {{-- サムネイル/アイコン --}}
+                                            <div class="flex-shrink-0 w-24 h-16 bg-gray-200 dark:bg-gray-700 rounded-md flex items-center justify-center">
+                                                {{-- 画像の場合 (is_image は Attachment モデルのアクセサ) --}}
+                                                <template x-if="attachment.is_image">
+                                                    <img :src="attachment.file_url" :alt="attachment.file_name"
+                                                         class="w-full h-full object-cover rounded-md">
+                                                </template>
+                                                {{-- 画像以外の場合 (汎用アイコン) --}}
+                                                <template x-if="!attachment.is_image">
+                                                    <svg class="w-8 h-8 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
+                                                </template>
+                                            </div>
+                                            {{-- ファイル情報と操作 --}}
+                                            <div class="flex-grow min-w-0">
+                                                <a :href="attachment.file_url" target="_blank" rel="noopener noreferrer"
+                                                   class="text-sm font-semibold text-gray-900 dark:text-white hover:underline"
+                                                   x-text="attachment.file_name">
+                                                </a>
+                                                <p class="text-xs text-gray-500 dark:text-gray-400">
+                                                    Added <span x-text="new Date(attachment.created_at).toLocaleString('ja-JP', { month: 'short', day: 'numeric' })"></span>
+                                                    by <span x-text="attachment.user.name"></span>
+                                                </p>
+                                                {{-- 操作ボタン --}}
+                                                <div class="mt-1 flex items-center space-x-2">
+                                                    <button @click.prevent="$dispatch('submit-delete-attachment', { attachment: attachment })"
+                                                            class="text-xs text-gray-500 dark:text-gray-400 hover:underline focus:outline-none">
+                                                        Delete
+                                                    </button>
+
+                                                    {{-- ★★★ ここから Make/Remove Cover ボタン ★★★ --}}
+                                                    {{-- 画像ファイルの場合のみ表示 --}}
+                                                    <template x-if="attachment.is_image">
+                                                        <div>
+                                                            {{-- 「Make cover」ボタン (カバーではない時) --}}
+                                                            <button 
+                                                                x-show="selectedCardData.cover_image_id !== attachment.id"
+                                                                @click.prevent="$dispatch('submit-make-cover', { attachmentId: attachment.id })"
+                                                                class="text-xs text-gray-500 dark:text-gray-400 hover:underline focus:outline-none">
+                                                                Make cover
+                                                            </button>
+
+                                                            {{-- 「Remove cover」ボタン (既にカバーの時) --}}
+                                                            <button 
+                                                                x-show="selectedCardData.cover_image_id === attachment.id"
+                                                                @click.prevent="$dispatch('submit-make-cover', { attachmentId: null })" {{-- ★ attachmentId: null を送信 --}}
+                                                                class="text-xs text-green-600 dark:text-green-400 font-semibold hover:underline focus:outline-none">
+                                                                ✓ Cover
+                                                            </button>
+                                                        </div>
+                                                    </template>
+                                                    {{-- ★★★ カバーボタンここまで ★★★ --}}
+                                                </div>
+                                                {{-- ★★★ ここからレビューUIを追加 ★★★ --}}
+                                                {{-- attachment.is_image (アクセサ) が true の場合のみ表示 --}}
+                                                <div x-show="attachment.is_image" class="mt-2" x-data='{ open: false }'>
+                                                    <div class="flex items-center space-x-2">
+                                                        {{-- ステータス表示 --}}
+                                                        <span class="text-xs font-medium px-2.5 py-0.5 rounded-full"
+                                                              {{-- review_status に応じて色を変更 --}}
+                                                              :class="{
+                                                                'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300': attachment.review_status === 'pending',
+                                                                'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300': attachment.review_status === 'approved',
+                                                                'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300': attachment.review_status === 'rejected'
+                                                              }"
+                                                              x-text="attachment.review_status">
+                                                        </span>
+                                                        {{-- 変更ボタン --}}
+                                                        <button @click="open = !open" class="text-xs text-gray-500 dark:text-gray-400 hover:underline focus:outline-none">
+                                                            Change status
+                                                        </button>
+                                                    </div>
+
+                                                    {{-- ポップオーバー本体 --}}
+                                                    <div x-show="open"
+                                                         @click.away="open = false"
+                                                         x-transition
+                                                         x-cloak
+                                                         class="relative z-10 mt-1 w-64 bg-white dark:bg-gray-900 rounded-md shadow-lg border border-gray-200 dark:border-gray-700">
+                                                        <div class="p-3">
+                                                            <h5 class="text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">Change review status</h5>
+                                                            <div class="space-y-2">
+                                                                {{-- Pending (Yellow) --}}
+                                                                <button @click.prevent="$dispatch('submit-review-status-update', { attachment: attachment, status: 'pending', callback: () => open = false })"
+                                                                        class="w-full text-left text-sm p-2 rounded-md font-medium text-yellow-800 dark:text-yellow-300 hover:bg-yellow-100 dark:hover:bg-yellow-900/50">
+                                                                    Pending (Waiting)
+                                                                </button>
+                                                                {{-- Approved (Green) --}}
+                                                                <button @click.prevent="$dispatch('submit-review-status-update', { attachment: attachment, status: 'approved', callback: () => open = false })"
+                                                                        class="w-full text-left text-sm p-2 rounded-md font-medium text-green-800 dark:text-green-300 hover:bg-green-100 dark:hover:bg-green-900/50">
+                                                                    Approved
+                                                                </button>
+                                                                {{-- Rejected (Red) --}}
+                                                                <button @click.prevent="$dispatch('submit-review-status-update', { attachment: attachment, status: 'rejected', callback: () => open = false })"
+                                                                        class="w-full text-left text-sm p-2 rounded-md font-medium text-red-800 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-900/50">
+                                                                    Rejected (Needs changes)
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                {{-- ★★★ レビューUIここまで ★★★ --}}
+                                            </div>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {{-- ★★★ 添付ファイルセクションここまで ★★★ --}}
+
                     {{-- ★★★ ここからチェックリストセクション ★★★ --}}
                     {{-- selectedCardData がロードされ、checklists が存在する場合にループ --}}
                     <template x-for="checklist in (selectedCardData ? selectedCardData.checklists : [])" :key="checklist.id">
@@ -502,6 +642,7 @@
                         </div>
                     </div>
                     {{-- ★★★ コメントセクションここまで ★★★ --}}
+
                 
                 </div>
                 {{-- ★★★ メインコンテンツ (左側) ここまで ★★★ --}}
@@ -695,7 +836,7 @@
                              class="relative w-full mt-3"
                         >
                             {{-- 1. ボタン本体 --}}
-                            <button @click="open = !open; if(open) { $nextTick(() => $refs.checklistTitleInput.focus().select()) }" 
+                            <button @click="open = !open; if(open) { $nextTick(() => $nextTick(() => { if ($refs.checklistTitleInput) { $refs.checklistTitleInput.focus(); $refs.checklistTitleInput.select(); } })) }" 
                                     type="button" 
                                     class="w-full flex items-center bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 text-sm font-medium rounded-md px-3 py-2">
                                 <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path></svg>
@@ -891,10 +1032,38 @@
                             </div>
                         </div>
                         {{-- Attachment --}}
-                        <button type="button" class="w-full flex items-center bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 text-sm font-medium rounded-md px-3 py-2 mt-3">
-                            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.414a4 4 0 00-5.656-5.656l-6.415 6.415a6 6 0 108.486 8.486L20.5 13"></path></svg>
-                            Attachment
-                        </button>
+                        <div x-data='{
+                                handleFileSelect(event) {
+                                    const file = event.target.files[0];
+                                    if (!file) return;
+
+                                    const formData = new FormData();
+                                    formData.append("file", file); // "file" は AttachmentController@store の "file" と一致
+
+                                    $dispatch("submit-new-attachment", { 
+                                        card: selectedCardData, 
+                                        formData: formData, 
+                                        callback: () => {
+                                            // フォームをリセット (同じファイルを連続でアップロードできるように)
+                                            event.target.value = null;
+                                        }
+                                    });
+                                }
+                             }'
+                             class="relative w-full mt-3"
+                        >
+                            {{-- 1. ファイル選択をトリガーする「ガワ」（ボタン風のラベル） --}}
+                            <label for="file-upload"
+                                   class="w-full flex items-center bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 text-sm font-medium rounded-md px-3 py-2 cursor-pointer">
+                                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.414a4 4 0 00-5.656-5.656l-6.415 6.415a6 6 0 108.486 8.486L20.5 13"></path></svg>
+                                Attachment
+                            </label>
+
+                            {{-- 2. 実際にファイルを選択する input (非表示) --}}
+                            <input type="file" id="file-upload" 
+                                   @change="handleFileSelect($event)"
+                                   class="hidden">
+                        </div>
                     
 
                     {{-- (ここに将来「Power-Ups」や「Actions」ボタンが入る) --}}

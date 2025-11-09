@@ -38,10 +38,7 @@
     </div>
 
     {{-- (2) カンバンボード本体 --}}
-    <div class="p-4 sm:p-6 lg:p-8 h-full flex-grow overflow-x-auto" >
-
-        <div class="flex space-x-4 h-full" x-sortable
-        @sortable-end.self="handleSortEnd($event.detail)"
+    <div class="p-4 sm:p-6 lg:p-8 h-full flex-grow overflow-x-auto"
         @card-sort-end.window="handleCardSortEnd($event.detail)" 
         @submit-card-title-update.window="updateCardTitleFromModal()"
         @submit-card-description-update.window="updateCardDescriptionFromModal()"
@@ -61,6 +58,10 @@
         @submit-checklist-item-sort.window="handleChecklistItemSort($event.detail)"
         @submit-edit-checklist.window="updateChecklist($event.detail)"
         @submit-delete-checklist.window="deleteChecklist($event.detail)"
+        @submit-new-attachment.window="submitNewAttachment($event.detail)"
+        @submit-delete-attachment.window="deleteAttachment($event.detail)"
+        @submit-review-status-update.window="updateReviewStatus($event.detail)"
+        @submit-make-cover.window="updateCardCoverImage($event.detail)"
         x-data='{
             lists: [],
             newCardForm: { // ★ 追加: カード追加フォームの状態
@@ -303,9 +304,11 @@
 
                 // fromList からカードを抜き取る
                 const [movedCard] = fromList.cards.splice(cardIndex, 1);
-
-                // toList の指定された位置 (newIndex) にカードを挿入
-                toList.cards.splice(detail.newIndex, 0, movedCard);
+                
+                // ★ 修正: toList.cards を丸ごと置き換える
+                let toItems = Array.from(toList.cards);
+                toItems.splice(detail.newIndex, 0, movedCard);
+                toList.cards = toItems;
 
                 // ★★★ ここから挿入 (強制再描画ロジック) ★★★
                 // SortableJSによるDOM変更とAlpineのリアクティビティを同期させる
@@ -393,13 +396,11 @@
                     return response.json();
                 })
                 .then(newCard => {
-                    // ★ 成功時の処理
-                    // 該当するリストの cards 配列に新しいカードを追加
-                    list.cards.push(newCard); 
-
-                    // フォームをリセット
+                    // ★ 修正: .push() の代わりに、新しい配列で置き換える
+                    list.cards = [...list.cards, newCard];
+                    
                     this.newCardForm.listId = null;
-                    this.newCardForm.title = ""; // "..." に変更
+                    this.newCardForm.title = ""; 
                 })
                 .catch(error => {
                     console.error("Error creating card:", error); // "..." に変更
@@ -1010,16 +1011,11 @@
                     }
                 })
                 .then(response => {
-                    if (!response.ok) { // 204 No Content も .ok は true
+                    if (!response.ok) { 
                         throw new Error("Failed to delete checklist item.");
                     }
-                    
-                    // ★ 成功時の処理 ★
-                    // checklist.items 配列から該当アイテムを削除
-                    const index = detail.checklist.items.findIndex(i => i.id === detail.item.id);
-                    if (index > -1) {
-                        detail.checklist.items.splice(index, 1);
-                    }
+                    // ★ 修正: .splice() の代わりに、.filter() で新しい配列を作成
+                    detail.checklist.items = detail.checklist.items.filter(i => i.id !== detail.item.id);
                 })
                 .catch(error => {
                     console.error("Error deleting checklist item:", error);
@@ -1177,6 +1173,7 @@
                     return;
                 }
 
+                // ★★★ この fetch(...) が抜けていました ★★★
                 fetch(`/checklists/${detail.checklist.id}`, {
                     method: "DELETE",
                     headers: {
@@ -1189,16 +1186,175 @@
                         throw new Error("Failed to delete checklist.");
                     }
                     
-                    // ★ 成功時の処理 ★
-                    // selectedCardData.checklists 配列から該当 checklist を削除
-                    const index = this.selectedCardData.checklists.findIndex(c => c.id === detail.checklist.id);
-                    if (index > -1) {
-                        this.selectedCardData.checklists.splice(index, 1);
-                    }
+                    // ★ 修正: .splice() の代わりに、.filter() で新しい配列を作成
+                    this.selectedCardData.checklists = this.selectedCardData.checklists.filter(c => c.id !== detail.checklist.id);
                 })
                 .catch(error => {
                     console.error("Error deleting checklist:", error);
                     alert("An error occurred while deleting the checklist.");
+                });
+            },
+
+            submitNewAttachment(detail) {
+                // detail = { card: {...}, formData: FormData, callback: () => {} }
+                
+                // (ローディングスピナーなどを表示するロジックを将来ここに追加できる)
+
+                fetch(`/cards/${detail.card.id}/attachments`, {
+                    method: "POST",
+                    headers: {
+                        // "Content-Type": "multipart/form-data", // ★ FormData を使う場合、Content-Type は「指定しない」
+                        "X-CSRF-TOKEN": document.querySelector("meta[name=\"csrf-token\"]").getAttribute("content"),
+                        "Accept": "application/json" // LaravelがJSONで応答するように
+                    },
+                    body: detail.formData // ★ FormData オブジェクトをそのまま送信
+                })
+                .then(response => {
+                    if (response.status === 422) { // バリデーションエラー
+                        alert("File is too large (max 10MB) or invalid file type.");
+                        throw new Error("Validation failed");
+                    }
+                    if (!response.ok) {
+                        throw new Error("Failed to upload file.");
+                    }
+                    return response.json();
+                })
+                .then(newAttachment => {
+                    // ★ 成功時の処理 ★
+                    // 1. モーダル内の attachments 配列に追加
+                    this.selectedCardData.attachments.push(newAttachment);
+                    
+                    // 2. ポップオーバーを閉じる (コールバックを実行)
+                    detail.callback();
+                })
+                .catch(error => {
+                    console.error("Error uploading file:", error);
+                    if (error.message !== "Validation failed") {
+                        alert("An error occurred while uploading the file.");
+                    }
+                    detail.callback(); // エラー時もポップオーバーを閉じる
+                });
+            },
+
+            deleteAttachment(detail) {
+                // detail = { attachment: {...} }
+                if (!confirm("Are you sure you want to delete the file \"" + detail.attachment.file_name + "\"?")) {
+                    return;
+                }
+
+                fetch(`/attachments/${detail.attachment.id}`, {
+                    method: "DELETE",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-CSRF-TOKEN": document.querySelector("meta[name=\"csrf-token\"]").getAttribute("content")
+                    }
+                })
+                .then(response => {
+                    if (response.status === 403) {
+                        throw new Error("You do not have permission to delete this file.");
+                    }
+                    if (!response.ok) { // 204 No Content も .ok は true
+                        throw new Error("Failed to delete attachment.");
+                    }
+                    
+                    // ★ 修正: .splice() の代わりに、.filter() で新しい配列を作成
+                    this.selectedCardData.attachments = this.selectedCardData.attachments.filter(a => a.id !== detail.attachment.id);
+                })
+                .catch(error => {
+                    console.error("Error deleting attachment:", error);
+                    alert(error.message || "An error occurred while deleting the attachment.");
+                });
+            },
+
+            updateReviewStatus(detail) {
+                // detail = { attachment: {...}, status: "...", callback: () => {} }
+                
+                // 既にそのステータスなら何もしない
+                if (detail.attachment.review_status === detail.status) {
+                    detail.callback(); // ポップオーバーを閉じる
+                    return;
+                }
+
+                fetch(`/attachments/${detail.attachment.id}/review`, {
+                    method: "PATCH",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-CSRF-TOKEN": document.querySelector("meta[name=\"csrf-token\"]").getAttribute("content")
+                    },
+                    body: JSON.stringify({ review_status: detail.status }) // review_status を送信
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error("Failed to update review status.");
+                    }
+                    return response.json();
+                })
+                .then(updatedAttachment => {
+                    // ★ 成功時の処理 ★
+                    // 1. モーダル内の該当添付ファイルのステータスを更新
+                    detail.attachment.review_status = updatedAttachment.review_status;
+                    
+                    // 2. ポップオーバーを閉じる (コールバックを実行)
+                    detail.callback();
+                })
+                .catch(error => {
+                    console.error("Error updating review status:", error);
+                    alert("An error occurred while updating the status.");
+                    detail.callback(); // エラー時もポップオーバーを閉じる
+                });
+            },
+
+            updateCardCoverImage(detail) {
+                // detail = { attachmentId: 123 (or null for remove) }
+                const card = this.selectedCardData;
+
+                // 既に設定済み、または既に解除済みなら何もしない
+                if (card.cover_image_id === detail.attachmentId) {
+                    return;
+                }
+
+                fetch(`/cards/${card.id}`, {
+                    method: "PATCH",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-CSRF-TOKEN": document.querySelector("meta[name=\"csrf-token\"]").getAttribute("content")
+                    },
+                    body: JSON.stringify({ cover_image_id: detail.attachmentId }) // cover_image_id (ID or null) を送信
+                })
+                .then(response => {
+                    if (response.status === 422) { // バリデーションエラー
+                        alert("Invalid cover image selected.");
+                        throw new Error("Validation failed");
+                    }
+                    if (!response.ok) {
+                        throw new Error("Failed to update cover image.");
+                    }
+                    return response.json();
+                })
+                .then(updatedCard => {
+                    // ★ 成功時の処理 ★
+                    // 1. モーダル内のデータを更新
+                    this.selectedCardData.cover_image_id = updatedCard.cover_image_id;
+                    // (coverImage リレーションも手動で更新)
+                    this.selectedCardData.coverImage = this.selectedCardData.attachments.find(a => a.id === updatedCard.cover_image_id) || null;
+                    
+                    // 2. メインボード(背景)のデータも更新
+                    const listIndex = this.lists.findIndex(l => l.id == updatedCard.board_list_id);
+                    if (listIndex > -1) {
+                        const cardIndex = this.lists[listIndex].cards.findIndex(c => c.id == updatedCard.id);
+                        if (cardIndex > -1) {
+                            this.lists[listIndex].cards[cardIndex].cover_image_id = updatedCard.cover_image_id;
+                            // (※ 背景の coverImage リレーションは、
+                            //    "cards.labels" のように Eager Loading していないため、
+                            //    ここでは更新不要)
+                        }
+                    }
+                })
+                .catch(error => {
+                    console.error("Error updating cover image:", error);
+                    if (error.message !== "Validation failed") {
+                        alert("An error occurred while updating the cover image.");
+                    }
                 });
             },
 
@@ -1216,16 +1372,11 @@
                     }
                 })
                 .then(response => {
-                    if (!response.ok) { // 204 No Content も .ok は true になる
-                        throw new Error("Failed to delete card."); // "..."
+                    if (!response.ok) { 
+                        throw new Error("Failed to delete card."); 
                     }
-                    
-                    // ★ 成功時の処理
-                    // UIからカードを削除 (list.cards 配列から該当 card を除去)
-                    const index = list.cards.findIndex(c => c.id === card.id);
-                    if (index > -1) {
-                        list.cards.splice(index, 1);
-                    }
+                    // ★ 修正: .splice() の代わりに、.filter() で新しい配列を作成
+                    list.cards = list.cards.filter(c => c.id !== card.id);
                 })
                 .catch(error => {
                     console.error("Error deleting card:", error); // "..."
@@ -1287,7 +1438,10 @@
             }
         }'
         x-init="init(); watchSelectedCard();"
-        >
+    >
+
+        <div class="flex space-x-4 h-full" x-sortable
+        @sortable-end.self="handleSortEnd($event.detail)">
             {{-- ▼▼▼ PHPの@foreachをAlpine.jsの<template x-for>に変更 ▼▼▼ --}}
             <template x-for="list in lists" :key="list.id">
                 <div class="flex-shrink-0 w-72 bg-gray-100 dark:bg-gray-700 rounded-md shadow-md" :data-id="list.id">
@@ -1343,8 +1497,8 @@
 
                                 <div class="p-3">
                                     {{-- ★★★ ここから挿入: ラベルバー表示 ★★★ --}}
-                                    <div class="flex flex-wrap gap-1 mb-2" x-show="card.labels.length > 0">
-                                        <template x-for="label in card.labels" :key="label.id">
+                                    <div class="flex flex-wrap gap-1 mb-2" x-show="card.labels && card.labels.length > 0">
+                                        <template x-for="label in (card.labels || [])" :key="label.id">
                                             {{-- Trello風の小さなカラーバー --}}
                                             <span :class="label.color"
                                                   :title="label.name" {{-- ホバーでラベル名表示 --}}
@@ -1434,10 +1588,11 @@
                     </div>
                 </form>
             </div>
-            {{-- ★ ここから追加: カード詳細モーダル --}}
-            <x-card-detail-modal />
-            {{-- ★ 追加ここまで --}}
+            
         </div>
+        {{-- ★ ここから追加: カード詳細モーダル --}}
+        <x-card-detail-modal />
+        {{-- ★ 追加ここまで --}}
     </div>
 
 </x-app-layout>

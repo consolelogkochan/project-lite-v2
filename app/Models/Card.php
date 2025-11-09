@@ -8,6 +8,7 @@ use App\Models\BoardList;
 use App\Models\Comment;
 use App\Models\Label;
 use App\Models\Checklist;
+use App\Models\Attachment;
 
 class Card extends Model
 {
@@ -26,6 +27,7 @@ class Card extends Model
         'start_date', 
         'end_date',
         'reminder_at',
+        'cover_image_id',
     ];
 
     /**
@@ -94,5 +96,24 @@ class Card extends Model
     {
         // 通常、チェックリストは作成順に表示する
         return $this->hasMany(Checklist::class)->orderBy('created_at');
+    }
+
+    /**
+     * このカードに添付されたファイル
+     * ★ このメソッドを追加
+     */
+    public function attachments()
+    {
+        return $this->hasMany(Attachment::class)->latest();
+    }
+
+    /**
+     * このカードのカバー画像 (Attachmentモデル)
+     * ★ 2. このリレーションを追加
+     */
+    public function coverImage()
+    {
+        // cover_image_id (Card) が attachments.id (Attachment) を参照
+        return $this->belongsTo(Attachment::class, 'cover_image_id');
     }
 }

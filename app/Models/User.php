@@ -9,6 +9,7 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use App\Models\Comment;
 use Illuminate\Support\Facades\Storage;
+use App\Models\Attachment;
 
 class User extends Authenticatable
 {
@@ -87,5 +88,14 @@ class User extends Authenticatable
         }
         
         return null;
+    }
+
+    /**
+     * このユーザーがアップロードした添付ファイル
+     * ★ このメソッドを追加
+     */
+    public function attachments()
+    {
+        return $this->hasMany(Attachment::class);
     }
 }

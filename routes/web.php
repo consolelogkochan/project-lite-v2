@@ -13,6 +13,7 @@ use App\Http\Controllers\CommentController;
 use App\Http\Controllers\LabelController;
 use App\Http\Controllers\ChecklistController;
 use App\Http\Controllers\ChecklistItemController;
+use App\Http\Controllers\AttachmentController;
 
 /*
 |--------------------------------------------------------------------------
@@ -98,6 +99,13 @@ Route::middleware('auth')->group(function () {
     // (ChecklistItem だけで一意に特定できるため、ネスト不要)
     Route::patch('/checklist-items/{item}', [ChecklistItemController::class, 'update'])->name('checklist_items.update');
     Route::delete('/checklist-items/{item}', [ChecklistItemController::class, 'destroy'])->name('checklist_items.destroy');
+
+    // ★ ここから追加: 添付ファイルのアップロード
+    Route::post('/cards/{card}/attachments', [AttachmentController::class, 'store'])->name('attachments.store');
+    // ★ ここから追加: 添付ファイルのレビュー状況を更新
+    Route::patch('/attachments/{attachment}/review', [AttachmentController::class, 'updateReviewStatus'])->name('attachments.updateReviewStatus');
+    // ★ ここから追加: 添付ファイルの削除
+    Route::delete('/attachments/{attachment}', [AttachmentController::class, 'destroy'])->name('attachments.destroy');
 
     // 通知 (API)
     Route::get('/notifications', [NotificationController::class, 'index'])->name('notifications.index');
