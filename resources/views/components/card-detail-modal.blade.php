@@ -232,7 +232,8 @@
                                                         <div>
                                                             {{-- 「Make cover」ボタン (カバーではない時) --}}
                                                             <button 
-                                                                x-show="selectedCardData.cover_image_id !== attachment.id"
+                                                                {{-- ★ 修正: selectedCardData && を追加 --}}
+                                                                x-show="selectedCardData && selectedCardData.cover_image_id !== attachment.id"
                                                                 @click.prevent="$dispatch('submit-make-cover', { attachmentId: attachment.id })"
                                                                 class="text-xs text-gray-500 dark:text-gray-400 hover:underline focus:outline-none">
                                                                 Make cover
@@ -240,7 +241,8 @@
 
                                                             {{-- 「Remove cover」ボタン (既にカバーの時) --}}
                                                             <button 
-                                                                x-show="selectedCardData.cover_image_id === attachment.id"
+                                                                {{-- ★ 修正: selectedCardData && を追加 --}}
+                                                                x-show="selectedCardData && selectedCardData.cover_image_id === attachment.id"
                                                                 @click.prevent="$dispatch('submit-make-cover', { attachmentId: null })" {{-- ★ attachmentId: null を送信 --}}
                                                                 class="text-xs text-green-600 dark:text-green-400 font-semibold hover:underline focus:outline-none">
                                                                 ✓ Cover

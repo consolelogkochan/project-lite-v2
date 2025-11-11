@@ -14,6 +14,7 @@ use App\Http\Controllers\LabelController;
 use App\Http\Controllers\ChecklistController;
 use App\Http\Controllers\ChecklistItemController;
 use App\Http\Controllers\AttachmentController;
+use App\Http\Controllers\BoardInvitationController;
 
 /*
 |--------------------------------------------------------------------------
@@ -106,6 +107,21 @@ Route::middleware('auth')->group(function () {
     Route::patch('/attachments/{attachment}/review', [AttachmentController::class, 'updateReviewStatus'])->name('attachments.updateReviewStatus');
     // ★ ここから追加: 添付ファイルの削除
     Route::delete('/attachments/{attachment}', [AttachmentController::class, 'destroy'])->name('attachments.destroy');
+
+    // ★ ここから追加: ボードメンバー招待
+    // ユーザーをEmail/名前で検索
+    Route::get('/boards/{board}/search-users', [BoardInvitationController::class, 'searchUsers'])->name('boards.searchUsers');
+    // ★ ここから追加: ユーザーをボードに招待する
+    Route::post('/boards/{board}/invite-user', [BoardInvitationController::class, 'inviteUser'])->name('boards.inviteUser');
+    // ★ ここから追加: ボードの現在のメンバー一覧を取得
+    Route::get('/boards/{board}/members', [BoardInvitationController::class, 'getMembers'])->name('boards.getMembers');
+    // ★ ここから追加: メンバーの役割を更新
+    // {user} は更新対象のユーザーID
+    Route::patch('/boards/{board}/members/{user}', [BoardInvitationController::class, 'updateRole'])->name('boards.updateRole');
+    // ★ ここから追加: メンバーをボードから退出させる
+    Route::delete('/boards/{board}/members/{user}', [BoardInvitationController::class, 'removeMember'])->name('boards.removeMember');
+    // ★ ここから追加: 自身がボードから退出する
+    Route::delete('/boards/{board}/leave', [BoardInvitationController::class, 'leaveBoard'])->name('boards.leave');
 
     // 通知 (API)
     Route::get('/notifications', [NotificationController::class, 'index'])->name('notifications.index');

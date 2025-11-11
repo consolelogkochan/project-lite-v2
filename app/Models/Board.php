@@ -22,14 +22,6 @@ class Board extends Model
     }
 
     /**
-     * このボードに所属するすべてのメンバー（中間テーブル経由）
-     */
-    public function members()
-    {
-        return $this->belongsToMany(User::class, 'board_user')->withTimestamps();
-    }
-
-    /**
      * このボードに属するすべてのリスト
      */
     public function lists()
@@ -52,7 +44,10 @@ class Board extends Model
     public function users()
     {
         // 'board_user' 中間テーブルを経由して User モデルにアクセス
-        return $this->belongsToMany(User::class, 'board_user')->withTimestamps();
+        return $this->belongsToMany(User::class, 'board_user')
+        ->withTimestamps()
+        ->withPivot('role');
+        
     }
 
     /**

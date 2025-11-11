@@ -34,7 +34,25 @@
                 {{-- ユーザーメニュー --}}
                 <div class="relative" id="user-menu-component">
                     <button id="user-menu-button" class="flex text-sm border-2 border-transparent rounded-full focus:outline-none focus:border-gray-300 transition">
-                        <img class="h-8 w-8 rounded-full object-cover" src="{{ Auth::user()->avatar ? asset('storage/' . Auth::user()->avatar) : 'https://via.placeholder.com/150' }}" alt="{{ Auth::user()->name }}">
+                        {{-- ★★★ ここから修正 ★★★ --}}
+                        {{-- 1. Str::startsWith() で厳密にチェック --}}
+                        @if (\Illuminate\Support\Str::startsWith(Auth::user()->avatar, 'avatars/'))
+                            {{-- アバター画像 --}}
+                            <img class="h-8 w-8 rounded-full object-cover" src="{{ asset('storage/' . Auth::user()->avatar) }}" alt="{{ Auth::user()->name }}">
+                        @else
+                            {{-- フォールバック: イニシャル (マルチバイト対応) --}}
+                            <span class="inline-flex h-8 w-8 rounded-full bg-gray-500 items-center justify-center" title="{{ Auth::user()->name }}">
+                                <span class="text-sm font-medium leading-none text-white">
+                                    @php
+                                        $name = trim(Auth::user()->name ?? '');
+                                        $initial = mb_substr($name, 0, 1, 'UTF-8'); 
+                                        $initials = mb_strtoupper($initial, 'UTF-8');
+                                    @endphp
+                                    {{ $initials }}
+                                </span>
+                            </span>
+                        @endif
+                        {{-- ★★★ 修正ここまで ★★★ --}}
                     </button>
                     <div id="user-menu-dropdown" class="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-50 hidden">
                         <a href="{{ route('profile.edit') }}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">{{ __('Profile') }}</a>

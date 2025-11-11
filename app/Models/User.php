@@ -73,7 +73,9 @@ class User extends Authenticatable
      */
     public function boards()
     {
-        return $this->belongsToMany(Board::class, 'board_user')->withTimestamps();
+        return $this->belongsToMany(Board::class, 'board_user')
+        ->withTimestamps()
+        ->withPivot('role');
     }
 
     /**
@@ -81,13 +83,18 @@ class User extends Authenticatable
      */
     public function getAvatarUrlAttribute(): ?string
     {
-        if ($this->avatar) { // ★ "avatar_path" から "avatar" に変更
-            // "avatar" (例: "avatars/xyz.jpg") から
-            // "storage:link" された公開URL (例: "/storage/avatars/xyz.jpg") を生成
-            return Storage::url($this->avatar); // ★ "avatar_path" から "avatar" に変更
+        // 1. $this->avatar (DBの値) が null でも安全なように ?? '' を使い、
+        //    trim() で前後の空白を削除
+        $avatarPath = trim($this->avatar ?? '');
+
+        // 2. $avatarPath が「空文字」になった場合
+        //    (NULL, "", " " はすべてここで false になる)
+        if ($avatarPath === '') {
+            return null;
         }
         
-        return null;
+        // 3. 有効な文字列パスが存在する場合のみ、URLを生成
+        return Storage::url($avatarPath);
     }
 
     /**

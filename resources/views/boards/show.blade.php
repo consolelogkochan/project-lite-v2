@@ -1,45 +1,6 @@
 <x-app-layout>
-    {{-- (1) カンバンボード専用ヘッダー (変更なし) --}}
-    <div class="bg-white dark:bg-gray-800 shadow-md">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="flex items-center justify-between h-16">
-                <div class="flex items-center space-x-4">
-                    <h1 class="text-2xl font-bold text-gray-800 dark:text-gray-200">{{ $board->title }}</h1>
-                    {{-- (ビュー切替アイコンは変更なし) --}}
-                    <div class="flex space-x-2">
-                        <button class="p-2 rounded-md bg-indigo-100 text-indigo-600">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path></svg>
-                        </button>
-                        <button class="p-2 rounded-md text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
-                        </button>
-                        <button class="p-2 rounded-md text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 14h18M3 6h18M3 18h18"></path></svg>
-                        </button>
-                    </div>
-                </div>
-
-                <div class="flex items-center space-x-4">
-                    <div class="flex -space-x-2">
-                        <img class="inline-flex h-8 w-8 rounded-full ring-2 ring-white dark:ring-gray-800" src="https://via.placeholder.com/150" alt="Member 1">
-                        <img class="inline-flex h-8 w-8 rounded-full ring-2 ring-white dark:ring-gray-800" src="https://via.placeholder.com/150" alt="Member 2">
-                        <span class="inline-flex h-8 w-8 rounded-full ring-2 ring-white dark:ring-gray-800 bg-gray-200 text-gray-700 items-center justify-center text-xs font-medium">+2</span>
-                    </div>
-                    <button class="text-gray-400 hover:text-gray-600 dark:hover:text-white">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"></path></svg>
-                    </button>
-                    <x-primary-button>
-                        <svg class="w-4 h-4 me-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"></path></svg>
-                        Invite
-                    </x-primary-button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    {{-- (2) カンバンボード本体 --}}
-    <div class="p-4 sm:p-6 lg:p-8 h-full flex-grow overflow-x-auto"
-        @card-sort-end.window="handleCardSortEnd($event.detail)" 
+    <div
+    @card-sort-end.window="handleCardSortEnd($event.detail)" 
         @submit-card-title-update.window="updateCardTitleFromModal()"
         @submit-card-description-update.window="updateCardDescriptionFromModal()"
         @submit-new-comment.window="submitNewCommentFromModal($event.detail)"
@@ -83,6 +44,7 @@
             editingChecklistId: null, // 編集中のチェックリストID
             editedChecklistTitle: "", // 編集用のチェックリストタイトル
             addingList: false,
+            showInviteModal: false, // 招待モーダルの表示状態
             boardLabels: [],
             newListTitle: "",
             editingListId: null,
@@ -117,8 +79,14 @@
                                 return response.json();
                             })
                             .then(data => {
-                                // 取得したデータをセット
+                                // ★★★ ここから修正 ★★★
+                                // 1. coverImage オブジェクトを手動で構築する
+                                // (data.attachments の中から data.cover_image_id と一致するものを探す)
+                                data.coverImage = data.attachments.find(a => a.id === data.cover_image_id) || null;
+
+                                // 2. 取得したデータ（coverImage が追加された状態）をセット
                                 this.selectedCardData = data; 
+                                // ★★★ 修正ここまで ★★★ 
                             })
                             .catch(error => {
                                 console.error("Error fetching card details:", error);
@@ -1437,162 +1405,237 @@
                 });
             }
         }'
-        x-init="init(); watchSelectedCard();"
-    >
-
-        <div class="flex space-x-4 h-full" x-sortable
-        @sortable-end.self="handleSortEnd($event.detail)">
-            {{-- ▼▼▼ PHPの@foreachをAlpine.jsの<template x-for>に変更 ▼▼▼ --}}
-            <template x-for="list in lists" :key="list.id">
-                <div class="flex-shrink-0 w-72 bg-gray-100 dark:bg-gray-700 rounded-md shadow-md" :data-id="list.id">
-                    {{-- リストヘッダー --}}
-                    <div class="p-3 flex justify-between items-center">
-                        {{-- ▼▼▼ タイトルを編集可能に変更 ▼▼▼ --}}
-                        <template x-if="editingListId === list.id">
-                            <input type="text" 
-                                   :id="`list-title-input-${list.id}`"
-                                   x-model="editedListTitle"
-                                   @blur="updateListTitle(list)"
-                                   @keydown.enter.prevent="updateListTitle(list)"
-                                   @keydown.escape.prevent="editingListId = null"
-                                   class="text-sm font-semibold text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 border-indigo-500 rounded focus:ring-indigo-500 w-full p-1">
-                        </template>
-                        <template x-if="editingListId !== list.id">
-                            <h3 @click="startEditingList(list)" 
-                                class="text-sm font-semibold text-gray-700 dark:text-gray-200 cursor-pointer w-full" 
-                                x-text="list.title">
-                            </h3>
-                        </template>
-                        {{-- ▲▲▲ 編集ロジックここまで ▲▲▲ --}}
-
-                        {{-- ▼▼▼ 3点リーダーボタンをドロップダウンに変更 ▼▼▼ --}}
-                        <div x-data="{ open: false }" class="relative">
-                            <button @click="open = !open" class="text-gray-400 hover:text-gray-600 dark:hover:text-white">
-                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"></path></svg>
+        x-init="init(); watchSelectedCard();">
+        {{-- (1) カンバンボード専用ヘッダー (変更なし) --}}
+        <div class="bg-white dark:bg-gray-800 shadow-md">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="flex items-center justify-between h-16">
+                    <div class="flex items-center space-x-4">
+                        <h1 class="text-2xl font-bold text-gray-800 dark:text-gray-200">{{ $board->title }}</h1>
+                        {{-- (ビュー切替アイコンは変更なし) --}}
+                        <div class="flex space-x-2">
+                            <button class="p-2 rounded-md bg-indigo-100 text-indigo-600">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path></svg>
                             </button>
-                            <div x-show="open" @click.away="open = false" x-transition
-                                class="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-md shadow-lg z-10">
-                                <a @click.prevent="open = false; deleteList(list)" href="#" 
-                                class="block px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700">
-                                    Delete this list...
-                                </a>
-                                {{-- (ここに将来「リストをコピー」などを追加できる) --}}
-                            </div>
+                            <button class="p-2 rounded-md text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                            </button>
+                            <button class="p-2 rounded-md text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 14h18M3 6h18M3 18h18"></path></svg>
+                            </button>
                         </div>
-                        {{-- ▲▲▲ 変更ここまで ▲▲▲ --}}
                     </div>
 
-                    {{-- カード一覧 --}}
-                    {{-- ★ 変更点: SortableJS連携のため data-list-id と list-cards クラスを追加 --}}
-                    <div class="list-cards p-3 space-y-3 overflow-y-auto" 
-                        style="max-height: calc(100vh - 250px);"
-                        :data-list-id="list.id"
-                        x-init="initCardSortable($el)">
-                        
-                        <template x-for="card in list.cards" :key="card.id">
-                            {{-- ★ 変更点: div全体をモーダルを開くトリガーにする --}}
-                            <div @click="selectedCardId = card.id" {{-- 1. @click で selectedCardId をセット --}}
-                                 class="card-item bg-white dark:bg-gray-800 rounded-md shadow hover:bg-gray-100 dark:hover:bg-gray-700 relative group cursor-pointer" {{-- 2. cursor-pointer をここに移動 --}}
-                                 :data-card-id="card.id">
+                    <div class="flex items-center space-x-4">
+                        <div class="flex -space-x-2">
+                            {{-- ★ 1. @php use ... @endphp は削除 --}}
 
-                                <div class="p-3">
-                                    {{-- ★★★ ここから挿入: ラベルバー表示 ★★★ --}}
-                                    <div class="flex flex-wrap gap-1 mb-2" x-show="card.labels && card.labels.length > 0">
-                                        <template x-for="label in (card.labels || [])" :key="label.id">
-                                            {{-- Trello風の小さなカラーバー --}}
-                                            <span :class="label.color"
-                                                  :title="label.name" {{-- ホバーでラベル名表示 --}}
-                                                  class="h-2 w-10 rounded-full">
-                                                {{-- 中身は空 --}}
-                                            </span>
-                                        </template>
-                                    </div>
-                                    {{-- ★★★ 挿入ここまで ★★★ --}}
-                                    {{-- 3. @click を削除 (親divに移動したため) --}}
-                                    <p class="text-sm text-gray-800 dark:text-gray-100" 
-                                       x-text="card.title">
-                                    </p>
-                                    
-                                    <button @click.prevent.stop="deleteCard(card, list)" {{-- 4. @click.prevent.stop を追加 --}}
-                                            class="absolute top-1 right-1 p-1 text-gray-400 hover:text-red-600 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity z-10">
-                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-                                        </svg>
-                                    </button>
-                                </div>
+                            @foreach ($board->users->take(4) as $member)
+                                {{-- ★ 2. 修正: フルネームで \Illuminate\Support\Str::startsWith() を呼び出す --}}
+                                @if (\Illuminate\Support\Str::startsWith($member->avatar, 'avatars/'))
+                                    <img class="inline-flex h-8 w-8 rounded-full ring-2 ring-white dark:ring-gray-800 object-cover" 
+                                         src="{{ asset('storage/' . $member->avatar) }}" 
+                                         alt="{{ $member->name }}"
+                                         title="{{ $member->name }}">
+                                @else
+                                    {{-- フォールバック: イニシャル --}}
+                                    <span class="inline-flex h-8 w-8 rounded-full ring-2 ring-white dark:ring-gray-800 bg-gray-500 items-center justify-center"
+                                          title="{{ $member->name }}">
+                                        <span class="text-sm font-medium leading-none text-white">
+                                            @php
+                                                // 1. 名前の前後の空白を削除 (NULLの場合は空文字にする)
+                                                $name = trim($member->name ?? '');
+                                                
+                                                // 2. mb_substr で「文字単位」で1文字目を取得
+                                                $initial = mb_substr($name, 0, 1, 'UTF-8');
+                                                
+                                                // 3. mb_strtoupper で大文字に変換
+                                                $initials = mb_strtoupper($initial, 'UTF-8');
+                                            @endphp
+                                            {{ $initials }}
+                                        </span>
+                                    </span>
+                                @endif
+                            @endforeach
 
-                                {{-- 5. インライン編集フォーム (editingCardId) はすべて削除 --}}
-                                
-                            </div>
-                        </template>
-                    </div>
-
-                        {{-- 「カードを追加」UI (トップレベルの newCardForm を参照) --}}
-                        {{-- リストフッター --}}
-                        <div class="list-footer p-3 border-t border-gray-200 dark:border-gray-600">
-                            <div class="mt-2">
-
-                                <div x-show="newCardForm.listId !== list.id">
-                                    <button @click="newCardForm.listId = list.id; $nextTick(() => $nextTick(() => { if ($refs['newCardTitleInput_' + list.id]) { $refs['newCardTitleInput_' + list.id].focus(); } }))"
-                                            class="w-full p-2 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-500 dark:text-gray-400 text-sm font-medium text-left">
-                                        + Add a card
-                                    </button>
-                                </div>
-
-                                <div x-show="newCardForm.listId === list.id" x-cloak>
-                                    <form @submit.prevent="submitNewCard(list)" 
-                                        class="space-y-2">
-                                        
-                                        {{-- ★ 変更点: x-model と :x-ref を動的に設定 --}}
-                                        <textarea x-model="newCardForm.title"
-                                                :x-ref="'newCardTitleInput_' + list.id"
-                                                @keydown.escape.prevent="newCardForm.listId = null; newCardForm.title = ''"
-                                                @keydown.enter.prevent="$event.target.form.requestSubmit()"
-                                                class="block w-full text-sm rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 focus:border-indigo-500 focus:ring-indigo-500 shadow-sm"
-                                                rows="3" 
-                                                placeholder="Enter a title for this card..."></textarea>
-                                        
-                                        <div class="flex items-center space-x-2">
-                                            <x-primary-button type="submit">Add card</x-primary-button>
-                                            <button @click="newCardForm.listId = null; newCardForm.title = ''"
-                                                    type="button"
-                                                    class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-white">
-                                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-                                            </button>
-                                        </div>
-                                    </form>
-                                </div>
-                            </div>
+                            {{-- もし5人以上いたら、残りの人数を表示 --}}
+                            @if ($board->users->count() > 4)
+                                <span class="inline-flex h-8 w-8 rounded-full ring-2 ring-white dark:ring-gray-800 bg-gray-200 text-gray-700 items-center justify-center text-xs font-medium">
+                                    +{{ $members->count() - 4 }}
+                                </span>
+                            @endif
                         </div>
-                    
-                </div>
-            </template>
-            {{-- ▲▲▲ Alpine.jsのループここまで ▲▲▲ --}}
-
-            {{-- 「リストを追加」UI --}}
-            <div class="flex-shrink-0 w-72">
-                <button x-show="!addingList" @click="addingList = true; $nextTick(() => $refs.listTitleInput.focus())"
-                        class="w-full p-3 rounded-md bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-400 font-medium">
-                    + Add another list
-                </button>
-                
-                {{-- ▼▼▼ フォームの@submitと<input>を更新 ▼▼▼ --}}
-                <form x-show="addingList" @submit.prevent="submitNewList" class="bg-gray-100 dark:bg-gray-700 rounded-md shadow-md p-3">
-                    <input x-model="newListTitle" x-ref="listTitleInput" type="text" placeholder="Enter list title..."
-                           class="block w-full text-sm rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 focus:border-indigo-500 focus:ring-indigo-500">
-                    <div class="mt-2 flex items-center space-x-2">
-                        <x-primary-button type="submit">Add list</x-primary-button>
-                        <button @click="addingList = false" type="button" class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-white">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                        <button class="text-gray-400 hover:text-gray-600 dark:hover:text-white">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"></path></svg>
                         </button>
+                        {{-- ★ 修正: @click で open-invite-modal イベントを発火 --}}
+                        <x-primary-button @click.prevent="showInviteModal = true">
+                            <svg class="w-4 h-4 me-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"></path></svg>
+                            Invite
+                        </x-primary-button>
                     </div>
-                </form>
+                </div>
             </div>
-            
         </div>
-        {{-- ★ ここから追加: カード詳細モーダル --}}
-        <x-card-detail-modal />
-        {{-- ★ 追加ここまで --}}
-    </div>
 
+        {{-- (2) カンバンボード本体 --}}
+        <div class="p-4 sm:p-6 lg:p-8 h-full flex-grow overflow-x-auto">
+
+            <div class="flex space-x-4 h-full" x-sortable
+            @sortable-end.self="handleSortEnd($event.detail)">
+                {{-- ▼▼▼ PHPの@foreachをAlpine.jsの<template x-for>に変更 ▼▼▼ --}}
+                <template x-for="list in lists" :key="list.id">
+                    <div class="flex-shrink-0 w-72 bg-gray-100 dark:bg-gray-700 rounded-md shadow-md" :data-id="list.id">
+                        {{-- リストヘッダー --}}
+                        <div class="p-3 flex justify-between items-center">
+                            {{-- ▼▼▼ タイトルを編集可能に変更 ▼▼▼ --}}
+                            <template x-if="editingListId === list.id">
+                                <input type="text" 
+                                    :id="`list-title-input-${list.id}`"
+                                    x-model="editedListTitle"
+                                    @blur="updateListTitle(list)"
+                                    @keydown.enter.prevent="updateListTitle(list)"
+                                    @keydown.escape.prevent="editingListId = null"
+                                    class="text-sm font-semibold text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 border-indigo-500 rounded focus:ring-indigo-500 w-full p-1">
+                            </template>
+                            <template x-if="editingListId !== list.id">
+                                <h3 @click="startEditingList(list)" 
+                                    class="text-sm font-semibold text-gray-700 dark:text-gray-200 cursor-pointer w-full" 
+                                    x-text="list.title">
+                                </h3>
+                            </template>
+                            {{-- ▲▲▲ 編集ロジックここまで ▲▲▲ --}}
+
+                            {{-- ▼▼▼ 3点リーダーボタンをドロップダウンに変更 ▼▼▼ --}}
+                            <div x-data="{ open: false }" class="relative">
+                                <button @click="open = !open" class="text-gray-400 hover:text-gray-600 dark:hover:text-white">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"></path></svg>
+                                </button>
+                                <div x-show="open" @click.away="open = false" x-transition
+                                    class="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-md shadow-lg z-10">
+                                    <a @click.prevent="open = false; deleteList(list)" href="#" 
+                                    class="block px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700">
+                                        Delete this list...
+                                    </a>
+                                    {{-- (ここに将来「リストをコピー」などを追加できる) --}}
+                                </div>
+                            </div>
+                            {{-- ▲▲▲ 変更ここまで ▲▲▲ --}}
+                        </div>
+
+                        {{-- カード一覧 --}}
+                        {{-- ★ 変更点: SortableJS連携のため data-list-id と list-cards クラスを追加 --}}
+                        <div class="list-cards p-3 space-y-3 overflow-y-auto" 
+                            style="max-height: calc(100vh - 250px);"
+                            :data-list-id="list.id"
+                            x-init="initCardSortable($el)">
+                            
+                            <template x-for="card in list.cards" :key="card.id">
+                                {{-- ★ 変更点: div全体をモーダルを開くトリガーにする --}}
+                                <div @click="selectedCardId = card.id" {{-- 1. @click で selectedCardId をセット --}}
+                                    class="card-item bg-white dark:bg-gray-800 rounded-md shadow hover:bg-gray-100 dark:hover:bg-gray-700 relative group cursor-pointer" {{-- 2. cursor-pointer をここに移動 --}}
+                                    :data-card-id="card.id">
+
+                                    <div class="p-3">
+                                        {{-- ★★★ ここから挿入: ラベルバー表示 ★★★ --}}
+                                        <div class="flex flex-wrap gap-1 mb-2" x-show="card.labels && card.labels.length > 0">
+                                            <template x-for="label in (card.labels || [])" :key="label.id">
+                                                {{-- Trello風の小さなカラーバー --}}
+                                                <span :class="label.color"
+                                                    :title="label.name" {{-- ホバーでラベル名表示 --}}
+                                                    class="h-2 w-10 rounded-full">
+                                                    {{-- 中身は空 --}}
+                                                </span>
+                                            </template>
+                                        </div>
+                                        {{-- ★★★ 挿入ここまで ★★★ --}}
+                                        {{-- 3. @click を削除 (親divに移動したため) --}}
+                                        <p class="text-sm text-gray-800 dark:text-gray-100" 
+                                        x-text="card.title">
+                                        </p>
+                                        
+                                        <button @click.prevent.stop="deleteCard(card, list)" {{-- 4. @click.prevent.stop を追加 --}}
+                                                class="absolute top-1 right-1 p-1 text-gray-400 hover:text-red-600 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                                            </svg>
+                                        </button>
+                                    </div>
+
+                                    {{-- 5. インライン編集フォーム (editingCardId) はすべて削除 --}}
+                                    
+                                </div>
+                            </template>
+                        </div>
+
+                            {{-- 「カードを追加」UI (トップレベルの newCardForm を参照) --}}
+                            {{-- リストフッター --}}
+                            <div class="list-footer p-3 border-t border-gray-200 dark:border-gray-600">
+                                <div class="mt-2">
+
+                                    <div x-show="newCardForm.listId !== list.id">
+                                        <button @click="newCardForm.listId = list.id; $nextTick(() => $nextTick(() => { if ($refs['newCardTitleInput_' + list.id]) { $refs['newCardTitleInput_' + list.id].focus(); } }))"
+                                                class="w-full p-2 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-500 dark:text-gray-400 text-sm font-medium text-left">
+                                            + Add a card
+                                        </button>
+                                    </div>
+
+                                    <div x-show="newCardForm.listId === list.id" x-cloak>
+                                        <form @submit.prevent="submitNewCard(list)" 
+                                            class="space-y-2">
+                                            
+                                            {{-- ★ 変更点: x-model と :x-ref を動的に設定 --}}
+                                            <textarea x-model="newCardForm.title"
+                                                    :x-ref="'newCardTitleInput_' + list.id"
+                                                    @keydown.escape.prevent="newCardForm.listId = null; newCardForm.title = ''"
+                                                    @keydown.enter.prevent="$event.target.form.requestSubmit()"
+                                                    class="block w-full text-sm rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 focus:border-indigo-500 focus:ring-indigo-500 shadow-sm"
+                                                    rows="3" 
+                                                    placeholder="Enter a title for this card..."></textarea>
+                                            
+                                            <div class="flex items-center space-x-2">
+                                                <x-primary-button type="submit">Add card</x-primary-button>
+                                                <button @click="newCardForm.listId = null; newCardForm.title = ''"
+                                                        type="button"
+                                                        class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-white">
+                                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                                                </button>
+                                            </div>
+                                        </form>
+                                    </div>
+                                </div>
+                            </div>
+                        
+                    </div>
+                </template>
+                {{-- ▲▲▲ Alpine.jsのループここまで ▲▲▲ --}}
+
+                {{-- 「リストを追加」UI --}}
+                <div class="flex-shrink-0 w-72">
+                    <button x-show="!addingList" @click="addingList = true; $nextTick(() => $refs.listTitleInput.focus())"
+                            class="w-full p-3 rounded-md bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-400 font-medium">
+                        + Add another list
+                    </button>
+                    
+                    {{-- ▼▼▼ フォームの@submitと<input>を更新 ▼▼▼ --}}
+                    <form x-show="addingList" @submit.prevent="submitNewList" class="bg-gray-100 dark:bg-gray-700 rounded-md shadow-md p-3">
+                        <input x-model="newListTitle" x-ref="listTitleInput" type="text" placeholder="Enter list title..."
+                            class="block w-full text-sm rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 focus:border-indigo-500 focus:ring-indigo-500">
+                        <div class="mt-2 flex items-center space-x-2">
+                            <x-primary-button type="submit">Add list</x-primary-button>
+                            <button @click="addingList = false" type="button" class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-white">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                            </button>
+                        </div>
+                    </form>
+                </div>
+                
+            </div>
+            {{-- ★ ここから追加: カード詳細モーダル --}}
+            <x-card-detail-modal />
+            {{-- ★ 追加ここまで --}}
+        </div>
+        {{-- ★ ここに追加: 招待モーダル --}}
+        <x-board-invite-modal :board="$board" />
+    </div> {{-- ★ x-data の閉じ div --}}
 </x-app-layout>

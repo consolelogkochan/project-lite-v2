@@ -9,10 +9,13 @@ use Illuminate\View\View;
 use Illuminate\Http\RedirectResponse; 
 use Illuminate\Http\Request; 
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 
 
 class BoardController extends Controller
 {
+    use AuthorizesRequests;
+
     /**
      * 新しいボードを作成して保存する
      */
@@ -35,7 +38,8 @@ class BoardController extends Controller
         $board->save();
 
         // ボードの作成者を自動的にメンバーとして中間テーブルに追加
-        $user->boards()->attach($board->id);
+        // ★ 'role' => 'admin' を設定
+        $user->boards()->attach($board->id, ['role' => 'admin']);
 
         // デフォルトラベル「今日の目標」を作成する
         $board->labels()->create([
@@ -52,18 +56,22 @@ class BoardController extends Controller
      */
     public function show(Board $board): View
     {
-        // ★ 変更点: $board->load() の代わりに、
-        // $lists 変数を明示的に作成する
+        // 1. 認可(Policy)チェック
+        $this->authorize('view', $board);
 
-        // ボードに属するリストを 'order' 順で取得
-        // 同時に、各リストに属するカード (BoardListモデルで 'order' 順に定義済み) も
-        // ★ 修正: 'cards.labels' も一緒に Eager Loading する
-        $lists = $board->lists()->with('cards.labels')->orderBy('order')->get();
+        // ★ 2. 修正: シンプルな Eager Loading に戻す
+        $board->load('users'); // ヘッダーのアバター用
 
-        // 'boards.show' ビューに、 $board と $lists の両方を渡す
+        // 3. リストと関連データを Eager Loading
+        $lists = $board->lists()
+                       ->with('cards.labels', 'cards.checklists.items', 'cards.attachments.user')
+                       ->orderBy('order')->get();
+        
+        // 4. ビューに渡す
         return view('boards.show', [
-            'board' => $board,
-            'lists' => $lists, // ★ 変更点: $lists を追加
+            'board' => $board, // ★ 'users' リレーションを含んだ $board
+            'lists' => $lists,
+            // 'members' => $members, // ★ $members 変数は不要になった
         ]);
     }
 
@@ -73,22 +81,10 @@ class BoardController extends Controller
      */
     public function destroy(Request $request, Board $board): RedirectResponse
     {
-        // ★ 2. 認可チェック: ボードのオーナー（owner_id）本人であるか
-        // (簡易チェック)
-        if (Auth::id() !== $board->owner_id) {
-            // (将来的に Gate::authorize('delete', $board); に置き換える)
-            
-            // APIリクエストの場合 (JSONを期待している場合)
-            if ($request->expectsJson()) {
-                return response()->json(['message' => 'Forbidden'], 403);
-            }
-            // 通常のWebリクエストの場合
-            return redirect()->route('dashboard')->with('error', 'You do not have permission to delete this board.');
-        }
+        // ★ 修正: BoardPolicy@delete を呼び出す
+        $this->authorize('delete', $board);
 
         // ★ 3. ボードを削除
-        // マイグレーションで onDelete('cascade') を設定していれば、
-        // 関連するリスト、カード、ラベル、コメントもすべて連鎖削除される
         $board->delete();
 
         // ★ 4. 成功時の応答
