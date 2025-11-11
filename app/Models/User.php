@@ -10,6 +10,7 @@ use Illuminate\Notifications\Notifiable;
 use App\Models\Comment;
 use Illuminate\Support\Facades\Storage;
 use App\Models\Attachment;
+use App\Models\Card;
 
 class User extends Authenticatable
 {
@@ -104,5 +105,15 @@ class User extends Authenticatable
     public function attachments()
     {
         return $this->hasMany(Attachment::class);
+    }
+
+    /**
+     * このユーザーが割り当てられているカード
+     * ★ このメソッドを追加
+     */
+    public function assignedCards()
+    {
+        // 'card_user' 中間テーブルを経由
+        return $this->belongsToMany(Card::class, 'card_user');
     }
 }

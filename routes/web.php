@@ -15,6 +15,7 @@ use App\Http\Controllers\ChecklistController;
 use App\Http\Controllers\ChecklistItemController;
 use App\Http\Controllers\AttachmentController;
 use App\Http\Controllers\BoardInvitationController;
+use App\Http\Controllers\CardAssignmentController;
 
 /*
 |--------------------------------------------------------------------------
@@ -122,6 +123,10 @@ Route::middleware('auth')->group(function () {
     Route::delete('/boards/{board}/members/{user}', [BoardInvitationController::class, 'removeMember'])->name('boards.removeMember');
     // ★ ここから追加: 自身がボードから退出する
     Route::delete('/boards/{board}/leave', [BoardInvitationController::class, 'leaveBoard'])->name('boards.leave');
+
+    // ★ ここから追加: カードへのメンバー割り当て
+    Route::post('/cards/{card}/assign-user/{user}', [CardAssignmentController::class, 'assignUser'])->name('cards.assignUser');
+    Route::delete('/cards/{card}/assign-user/{user}', [CardAssignmentController::class, 'unassignUser'])->name('cards.unassignUser');
 
     // 通知 (API)
     Route::get('/notifications', [NotificationController::class, 'index'])->name('notifications.index');

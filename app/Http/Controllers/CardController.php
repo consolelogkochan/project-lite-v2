@@ -49,8 +49,8 @@ class CardController extends Controller
         // TODO: ここに「このカードを閲覧する権限があるか」の
         // 認可(Policy)チェックを将来追加する
 
-        // カード情報、属するリスト、コメント（＋コメント投稿者）を一緒に読み込む
-        $card->load('list.board', 'comments.user', 'labels', 'checklists.items', 'attachments.user');
+        // ★ 修正: 'assignedUsers' (このカードに紐づくメンバー) も Eager Loading
+        $card->load('list.board', 'comments.user', 'labels', 'checklists.items', 'attachments.user', 'assignedUsers');
 
         return response()->json($card);
     }
@@ -103,6 +103,8 @@ class CardController extends Controller
                     return $query->where('card_id', $card->id);
                 }),
             ],
+
+            'is_completed' => 'sometimes|required|boolean',
         ]);
 
         if ($validator->fails()) {

@@ -23,6 +23,8 @@
         @submit-delete-attachment.window="deleteAttachment($event.detail)"
         @submit-review-status-update.window="updateReviewStatus($event.detail)"
         @submit-make-cover.window="updateCardCoverImage($event.detail)"
+        @toggle-assigned-user.window="toggleAssignedUser($event.detail)"
+        @toggle-card-completed.window="toggleCardCompleted($event.detail)"
         x-data='{
             lists: [],
             newCardForm: { // ★ 追加: カード追加フォームの状態
@@ -46,6 +48,7 @@
             addingList: false,
             showInviteModal: false, // 招待モーダルの表示状態
             boardLabels: [],
+            boardMembers: [], // ボードの全メンバーを保持する配列
             newListTitle: "",
             editingListId: null,
             editedListTitle: "",
@@ -60,6 +63,15 @@
                         this.boardLabels = data;
                     })
                     .catch(error => console.error("Error fetching labels:", error));
+                
+                // ★ ここから追加: ボードの全メンバーを fetch
+                fetch("{{ route('boards.getMembers', $board) }}")
+                    .then(response => response.json())
+                    .then(data => {
+                        this.boardMembers = data;
+                    })
+                    .catch(error => console.error("Error fetching members:", error));
+                // ★ 追加ここまで
             },
 
             // ★ ここから追加: selectedCardId を監視
@@ -1272,6 +1284,128 @@
                 });
             },
 
+            toggleAssignedUser(detail) {
+                // detail = { card: {...}, member: {...}, isAttached: true/false }
+                
+                let endpoint = `/cards/${detail.card.id}/assign-user/${detail.member.id}`;
+                let method = detail.isAttached ? "POST" : "DELETE";
+
+                fetch(endpoint, {
+                    method: method,
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-CSRF-TOKEN": document.querySelector("meta[name=\"csrf-token\"]").getAttribute("content"),
+                        "Accept": "application/json"
+                    }
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error("Failed to toggle assigned user.");
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    // ★★★ ここから修正 ★★★
+                    
+                    // 1. (assignedUsers が null/undefined の場合、|| [] で空配列をセット)
+                    const currentAssignments = this.selectedCardData.assignedUsers || [];
+
+                    if (detail.isAttached) {
+                        // (attach)
+                        this.selectedCardData.assignedUsers = [
+                            ...currentAssignments, 
+                            detail.member
+                        ];
+                    } else {
+                        // (detach)
+                        this.selectedCardData.assignedUsers = 
+                            currentAssignments.filter(u => u.id !== detail.member.id);
+                    }
+                    // ★★★ 修正ここまで ★★★
+                })
+                .catch(error => {
+                    console.error("Error toggling assigned user:", error);
+                    alert("An error occurred while toggling the member assignment.");
+                });
+            },
+
+            toggleCardCompleted(detail) {
+                // detail = { card: {...}, isCompleted: true/false }
+                const card = this.selectedCardData;
+                
+                fetch(`/cards/${card.id}`, {
+                    method: "PATCH",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-CSRF-TOKEN": document.querySelector("meta[name=\"csrf-token\"]").getAttribute("content")
+                    },
+                    body: JSON.stringify({ is_completed: detail.isCompleted }) // is_completed を送信
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error("Failed to update card status.");
+                    }
+                    return response.json();
+                })
+                .then(updatedCard => {
+                    // ★ 成功時の処理 ★
+                    // 1. モーダル内のデータを更新
+                    this.selectedCardData.is_completed = updatedCard.is_completed;
+                    
+                    // 2. メインボード(背景)のデータも更新 (同期のため)
+                    const listIndex = this.lists.findIndex(l => l.id == updatedCard.board_list_id);
+                    if (listIndex > -1) {
+                        const cardIndex = this.lists[listIndex].cards.findIndex(c => c.id == updatedCard.id);
+                        if (cardIndex > -1) {
+                            this.lists[listIndex].cards[cardIndex].is_completed = updatedCard.is_completed;
+                        }
+                    }
+                })
+                .catch(error => {
+                    console.error("Error updating card status:", error);
+                    alert("An error occurred while updating the card status.");
+                    // エラー時はチェックボックスを元に戻す
+                    this.selectedCardData.is_completed = !detail.isCompleted;
+                });
+            },
+
+            toggleCardCompletedFromBoard(card, isCompleted) {
+                // card = this.lists[...].cards[...] の card オブジェクト
+                // isCompleted = $event.target.checked (true/false)
+
+                fetch(`/cards/${card.id}`, {
+                    method: "PATCH",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-CSRF-TOKEN": document.querySelector("meta[name=\"csrf-token\"]").getAttribute("content")
+                    },
+                    body: JSON.stringify({ is_completed: isCompleted })
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error("Failed to update card status.");
+                    }
+                    return response.json();
+                })
+                .then(updatedCard => {
+                    // ★ 成功時の処理 ★
+                    // 1. メインボード(背景)のデータを更新
+                    // (card オブジェクトは参照渡しなので、これを更新すれば this.lists が更新される)
+                    card.is_completed = updatedCard.is_completed; 
+                    
+                    // 2. モーダルが開いていれば、モーダル内のデータも更新 (同期のため)
+                    if (this.selectedCardData && this.selectedCardData.id === updatedCard.id) {
+                        this.selectedCardData.is_completed = updatedCard.is_completed;
+                    }
+                })
+                .catch(error => {
+                    console.error("Error updating card status:", error);
+                    alert("An error occurred while updating the card status.");
+                    // エラー時はチェックボックスを元に戻す
+                    card.is_completed = !isCompleted;
+                });
+            },
+
             updateCardCoverImage(detail) {
                 // detail = { attachmentId: 123 (or null for remove) }
                 const card = this.selectedCardData;
@@ -1531,39 +1665,46 @@
                             x-init="initCardSortable($el)">
                             
                             <template x-for="card in list.cards" :key="card.id">
-                                {{-- ★ 変更点: div全体をモーダルを開くトリガーにする --}}
-                                <div @click="selectedCardId = card.id" {{-- 1. @click で selectedCardId をセット --}}
-                                    class="card-item bg-white dark:bg-gray-800 rounded-md shadow hover:bg-gray-100 dark:hover:bg-gray-700 relative group cursor-pointer" {{-- 2. cursor-pointer をここに移動 --}}
+                                {{-- ★ 1. 'flex items-center p-3' を親に追加 --}}
+                                <div class="card-item bg-white dark:bg-gray-800 rounded-md shadow flex items-center p-3"
                                     :data-card-id="card.id">
 
-                                    <div class="p-3">
-                                        {{-- ★★★ ここから挿入: ラベルバー表示 ★★★ --}}
+                                    {{-- ★ 2. [NEW] チェックボックス --}}
+                                    <div class="flex-shrink-0">
+                                        <input type="checkbox" 
+                                            :checked="card.is_completed"
+                                            {{-- ★ 3. 新しいメソッドを呼び出す --}}
+                                            @change="toggleCardCompletedFromBoard(card, $event.target.checked)"
+                                            @click.stop {{-- ★ モーダルが開くのを防ぐ --}}
+                                            class="rounded border-gray-300 dark:border-gray-600 text-blue-600 shadow-sm focus:ring-blue-500 w-5 h-5 mr-3">
+                                    </div>
+
+                                    {{-- ★ 4. [MODIFIED] メインコンテンツ (モーダルを開くトリガー) --}}
+                                    <div @click="selectedCardId = card.id" class="flex-grow cursor-pointer min-w-0">
+                                        {{-- ラベルバー表示 --}}
                                         <div class="flex flex-wrap gap-1 mb-2" x-show="card.labels && card.labels.length > 0">
                                             <template x-for="label in (card.labels || [])" :key="label.id">
-                                                {{-- Trello風の小さなカラーバー --}}
                                                 <span :class="label.color"
-                                                    :title="label.name" {{-- ホバーでラベル名表示 --}}
+                                                    :title="label.name"
                                                     class="h-2 w-10 rounded-full">
-                                                    {{-- 中身は空 --}}
                                                 </span>
                                             </template>
                                         </div>
-                                        {{-- ★★★ 挿入ここまで ★★★ --}}
-                                        {{-- 3. @click を削除 (親divに移動したため) --}}
+
+                                        {{-- ★ 5. タイトルに line-through を追加 --}}
                                         <p class="text-sm text-gray-800 dark:text-gray-100" 
+                                        :class="{ 'line-through text-gray-500 dark:text-gray-400': card.is_completed }"
                                         x-text="card.title">
                                         </p>
-                                        
-                                        <button @click.prevent.stop="deleteCard(card, list)" {{-- 4. @click.prevent.stop を追加 --}}
-                                                class="absolute top-1 right-1 p-1 text-gray-400 hover:text-red-600 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity z-10">
-                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-                                            </svg>
+                                    </div>
+                                    
+                                    {{-- ★ 6. [MOVED] 削除ボタン (右端に配置) --}}
+                                    <div class="flex-shrink-0 ml-2">
+                                        <button @click.prevent.stop="deleteCard(card, list)" 
+                                                class="p-1 text-gray-400 rounded-md hover:text-red-600 dark:hover:text-red-400 transition-colors">
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
                                         </button>
                                     </div>
-
-                                    {{-- 5. インライン編集フォーム (editingCardId) はすべて削除 --}}
-                                    
                                 </div>
                             </template>
                         </div>

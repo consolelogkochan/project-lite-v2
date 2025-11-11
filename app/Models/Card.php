@@ -9,6 +9,7 @@ use App\Models\Comment;
 use App\Models\Label;
 use App\Models\Checklist;
 use App\Models\Attachment;
+use App\Models\User;
 
 class Card extends Model
 {
@@ -28,6 +29,7 @@ class Card extends Model
         'end_date',
         'reminder_at',
         'cover_image_id',
+        'is_completed',
     ];
 
     /**
@@ -39,6 +41,7 @@ class Card extends Model
         'start_date' => 'datetime',
         'end_date' => 'datetime',
         'reminder_at' => 'datetime',
+        'is_completed' => 'boolean',
     ];
 
     /**
@@ -115,5 +118,16 @@ class Card extends Model
     {
         // cover_image_id (Card) が attachments.id (Attachment) を参照
         return $this->belongsTo(Attachment::class, 'cover_image_id');
+    }
+
+    /**
+     * このカードに割り当てられているユーザー（担当者）
+     * ★ このメソッドを追加
+     */
+    public function assignedUsers()
+    {
+        // 'card_user' 中間テーブルを経由
+        // (Boardの'users'と区別するため 'assignedUsers' という名前にします)
+        return $this->belongsToMany(User::class, 'card_user');
     }
 }
