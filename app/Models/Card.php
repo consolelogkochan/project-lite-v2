@@ -28,6 +28,7 @@ class Card extends Model
         'start_date', 
         'end_date',
         'reminder_at',
+        'reminder_sent',
         'cover_image_id',
         'is_completed',
     ];

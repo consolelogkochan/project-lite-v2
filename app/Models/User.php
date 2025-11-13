@@ -27,6 +27,13 @@ class User extends Authenticatable
         'email',
         'password',
         'avatar',
+        'status',
+        'notify_on_comment',
+        'notify_on_attachment',
+        'notify_on_due_date',
+        'notify_on_card_move',
+        'notify_on_card_created', // ★ 追加
+        'notify_on_card_deleted', // ★ 追加
     ];
 
     /**
@@ -49,6 +56,12 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'notify_on_comment' => 'boolean',
+            'notify_on_attachment' => 'boolean',
+            'notify_on_due_date' => 'boolean',
+            'notify_on_card_move' => 'boolean',
+            'notify_on_card_created' => 'boolean', // ★ 追加
+            'notify_on_card_deleted' => 'boolean', // ★ 追加
         ];
     }
 

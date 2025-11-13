@@ -23,9 +23,9 @@
                     <button id="notification-button" class="text-gray-400 hover:text-gray-600">
                         <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path></svg>
                     </button>
-                    @if($unreadNotificationsCount > 0)
-                        <span id="notification-badge" class="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-xs text-white">{{ $unreadNotificationsCount }}</span>
-                    @endif
+                    {{-- ★ 修正: バッジを常に出力し、 'display: none' で隠す --}}
+                    {{-- (JavaScript の updateBadge() が表示/非表示を制御する) --}}
+                    <span id="notification-badge" class="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-xs text-white" style="display: none;"></span>
                     <div id="notification-dropdown" class="absolute right-0 mt-2 w-80 bg-white rounded-md shadow-lg z-50 hidden">
                         {{-- 中身はJavaScriptで生成 --}}
                     </div>
@@ -86,7 +86,8 @@ document.addEventListener('DOMContentLoaded', function () {
     // --- 変数定義 ---
     let notifications = [];
     let filter = 'all';
-    let unreadCount = {{ $unreadNotificationsCount }};
+    // ★ 1. 修正: PHP変数を削除し、JS変数として 0 で初期化
+    let unreadCount = 0;
 
     // --- 関数定義 ---
     function updateBadge() {
@@ -104,8 +105,49 @@ document.addEventListener('DOMContentLoaded', function () {
         if (filter === 'unread') {
             filtered = notifications.filter(n => n.read_at === null);
         }
-        let content = `<div class="p-4 font-bold border-b flex justify-between items-center"><span>Notifications</span><div class="flex items-center space-x-2"><button data-filter="all" class="notification-filter-btn px-2 py-1 text-xs font-semibold rounded-md ${filter === 'all' ? 'bg-indigo-100 text-indigo-700' : 'hover:bg-gray-100'}">All</button><button data-filter="unread" class="notification-filter-btn px-2 py-1 text-xs font-semibold rounded-md ${filter === 'unread' ? 'bg-indigo-100 text-indigo-700' : 'hover:bg-gray-100'}">Unread</button><button id="notification-settings-button" title="Notification Settings" class="text-gray-400 hover:text-gray-600"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg></button></div></div><ul class="divide-y max-h-96 overflow-y-auto">`;
-        if (filtered.length === 0) { content += `<li class="p-4 text-center text-sm text-gray-500">${filter === 'unread' ? 'No unread notifications.' : 'No notifications yet.'}</li>`; } else { filtered.forEach(n => { content += `<li class="p-4 flex items-center justify-between hover:bg-gray-50"><a href="${n.data.url}" class="flex-grow"><p class="text-sm text-gray-700 ${n.read_at === null ? 'font-bold' : 'font-normal'}">${n.data.message}</p><p class="text-xs text-gray-400 mt-1">${new Date(n.created_at).toLocaleString()}</p></a>${n.read_at === null ? `<button data-id="${n.id}" title="Mark as read" class="mark-as-read-btn ms-4 flex-shrink-0 w-3 h-3 bg-indigo-500 rounded-full hover:bg-indigo-700"></button>` : ''}</li>`; }); }
+        
+        // ★ ヘッダー部分: "Clear Read" ボタンを追加
+        let content = `
+            <div class="p-4 font-bold border-b flex justify-between items-center">
+                <span>Notifications</span>
+                <div class="flex items-center space-x-2">
+                    <button id="clear-read-btn" class="text-xs text-red-500 hover:text-red-700 font-semibold disabled:opacity-50 disabled:cursor-not-allowed" ${notifications.some(n => n.read_at !== null) ? '' : 'disabled'}>
+                        Clear Read
+                    </button>
+                    <div class="h-4 w-px bg-gray-300 mx-1"></div>
+                    <button data-filter="all" class="notification-filter-btn px-2 py-1 text-xs font-semibold rounded-md ${filter === 'all' ? 'bg-indigo-100 text-indigo-700' : 'hover:bg-gray-100'}">All</button>
+                    <button data-filter="unread" class="notification-filter-btn px-2 py-1 text-xs font-semibold rounded-md ${filter === 'unread' ? 'bg-indigo-100 text-indigo-700' : 'hover:bg-gray-100'}">Unread</button>
+                    <button id="notification-settings-button" title="Notification Settings" class="text-gray-400 hover:text-gray-600">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                    </button>
+                </div>
+            </div>
+            <ul class="divide-y max-h-96 overflow-y-auto">
+        `;
+
+        if (filtered.length === 0) {
+            content += `<li class="p-4 text-center text-sm text-gray-500">${filter === 'unread' ? 'No unread notifications.' : 'No notifications yet.'}</li>`;
+        } else {
+            filtered.forEach(n => {
+                // ★ リストアイテム: ゴミ箱ボタンを追加
+                content += `
+                <li class="p-4 flex items-start justify-between hover:bg-gray-50 group">
+                    <a href="${n.data.url}" 
+                       class="flex-grow notification-link mr-2" 
+                       data-id="${n.id}" 
+                       data-read="${n.read_at !== null}">
+                        <p class="text-sm text-gray-700 ${n.read_at === null ? 'font-bold' : 'font-normal'}">${n.data.message}</p>
+                        <p class="text-xs text-gray-400 mt-1">${new Date(n.created_at).toLocaleString()}</p>
+                    </a>
+                    <div class="flex items-center space-x-2 flex-shrink-0 mt-1">
+                        ${n.read_at === null ? `<button data-id="${n.id}" title="Mark as read" class="mark-as-read-btn w-3 h-3 bg-indigo-500 rounded-full hover:bg-indigo-700"></button>` : ''}
+                        <button data-id="${n.id}" title="Delete" class="delete-notification-btn text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                        </button>
+                    </div>
+                </li>`;
+            });
+        }
         content += `</ul>`;
         notificationDropdown.innerHTML = content;
     }
@@ -134,6 +176,16 @@ document.addEventListener('DOMContentLoaded', function () {
         updateThemeIcon();
     });
     // --- ▲▲▲ 追加ここまで ▲▲▲ ---
+
+    // ★ 2. [NEW] ページ読み込み時に未読件数を fetch
+    fetch('{{ route('notifications.unreadCount') }}')
+        .then(response => response.json())
+        .then(data => {
+            unreadCount = data.count; // ★ 既存のJS変数を更新
+            updateBadge();            // ★ 既存の updateBadge() 関数を呼び出し
+        })
+        .catch(error => console.error('Error fetching unread count:', error));
+    // ★ 2. [NEW] ここまで
 
     // --- イベントリスナー ---
 
@@ -190,19 +242,43 @@ document.addEventListener('DOMContentLoaded', function () {
             renderNotifications();
         }
 
-        // 既読ボタンのクリック
-        if (target.closest('.mark-as-read-btn')) {
-            const id = target.closest('.mark-as-read-btn').dataset.id;
-            fetch(`/notifications/${id}`, { method: 'PATCH', headers: { 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content') }})
-                .then(response => {
-                    if (response.ok) {
-                        const notification = notifications.find(n => n.id === id);
-                        if (notification) notification.read_at = new Date().toISOString();
-                        unreadCount = Math.max(0, unreadCount - 1);
-                        updateBadge();
-                        renderNotifications();
-                    }
-                });
+        // ★★★ 既読処理（ボタン or リンククリック） ★★★
+        const markAsReadButton = target.closest('.mark-as-read-btn');
+        const notificationLink = target.closest('.notification-link');
+        
+        // 1. 既読ボタンが押されたか、「未読」のリンクが押されたか
+        if (markAsReadButton || (notificationLink && notificationLink.dataset.read === 'false')) {
+            
+            // 2. リンククリックの場合は、デフォルトの遷移を「停止」
+            if (notificationLink) {
+                event.preventDefault(); 
+            }
+            
+            const id = markAsReadButton ? markAsReadButton.dataset.id : notificationLink.dataset.id;
+            // const url = ... (削除)
+
+            fetch(`/notifications/${id}`, { 
+                method: 'PATCH', 
+                headers: { 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content') }
+            })
+            .then(response => {
+                if (response.ok) {
+                    const notification = notifications.find(n => n.id === id);
+                    if (notification) notification.read_at = new Date().toISOString();
+                    
+                    // 未読件数を更新
+                    unreadCount = Math.max(0, unreadCount - 1);
+                    updateBadge();
+                    renderNotifications(); // UI（太字→細字）を更新
+                }
+            });
+            // 3. .finally() ブロックを削除 (リダイレクトしない)
+        } 
+        // 4. [NEW] 既読のリンクがクリックされた場合は、普通に遷移させる
+        // (もしリダイレクトさせたい場合は、この else if を削除してください)
+        else if (notificationLink && notificationLink.dataset.read === 'true') {
+             // 既に既読の場合は、普通にリンクとして遷移
+             // (もし既読でも遷移させたくない場合は、この else if ブロックも削除)
         }
         
         // 設定ボタンのクリック
@@ -211,6 +287,49 @@ document.addEventListener('DOMContentLoaded', function () {
                 settingsModal.classList.remove('hidden');
                 settingsModal.classList.add('flex');
             }
+        }
+
+        // ★ 1. 個別削除ボタンのクリック
+        if (target.closest('.delete-notification-btn')) {
+            event.stopPropagation(); // ドロップダウンが閉じるのを防ぐ
+            const btn = target.closest('.delete-notification-btn');
+            const id = btn.dataset.id;
+
+            fetch(`/notifications/${id}`, { 
+                method: 'DELETE', 
+                headers: { 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content') }
+            })
+            .then(response => {
+                if (response.ok) {
+                    // 配列から削除
+                    const notification = notifications.find(n => n.id === id);
+                    if (notification && notification.read_at === null) {
+                        // 未読だった場合はカウントも減らす
+                        unreadCount = Math.max(0, unreadCount - 1);
+                        updateBadge();
+                    }
+                    notifications = notifications.filter(n => n.id !== id);
+                    renderNotifications();
+                }
+            });
+        }
+
+        // ★ 2. 既読一括削除ボタンのクリック
+        if (target.closest('#clear-read-btn')) {
+            event.stopPropagation();
+            if (!confirm('Are you sure you want to clear all read notifications?')) return;
+
+            fetch('{{ route("notifications.clearRead") }}', { 
+                method: 'DELETE', 
+                headers: { 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content') }
+            })
+            .then(response => {
+                if (response.ok) {
+                    // 未読のみ残す
+                    notifications = notifications.filter(n => n.read_at === null);
+                    renderNotifications();
+                }
+            });
         }
     });
     

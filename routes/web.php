@@ -128,9 +128,18 @@ Route::middleware('auth')->group(function () {
     Route::post('/cards/{card}/assign-user/{user}', [CardAssignmentController::class, 'assignUser'])->name('cards.assignUser');
     Route::delete('/cards/{card}/assign-user/{user}', [CardAssignmentController::class, 'unassignUser'])->name('cards.unassignUser');
 
-    // 通知 (API)
+    // ★ 2. ここから追加: 通知関連
+    // 未読通知の件数を取得
+    Route::get('/notifications/unread-count', [NotificationController::class, 'getUnreadCount'])->name('notifications.unreadCount');
     Route::get('/notifications', [NotificationController::class, 'index'])->name('notifications.index');
+    // ★ ここから追加: 通知設定の更新「{notification}」ワイルドカードよりも「上」に定義
+    Route::patch('/notifications/preferences', [NotificationController::class, 'updatePreferences'])->name('notifications.updatePreferences');
+    // ★ 1. 既読通知の一括削除 (ID指定より上に書く)
+    Route::delete('/notifications/clear-read', [NotificationController::class, 'clearRead'])->name('notifications.clearRead');
+    // ★ 2. 個別の通知削除
+    Route::delete('/notifications/{notification}', [NotificationController::class, 'destroy'])->name('notifications.destroy');
     Route::patch('/notifications/{notification}', [NotificationController::class, 'update'])->name('notifications.update');
+
 
     // テスト用通知
     Route::get('/test-notification', function () {

@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use App\Models\User;
 use Illuminate\Validation\Rule;
+use App\Events\AttachmentUploaded;
 
 class AttachmentController extends Controller
 {
@@ -55,11 +56,14 @@ class AttachmentController extends Controller
 
         // 3. 成功応答 (load('user') でアップロード者情報も返す)
         $attachment->load('user');
+
+        // ★ ここでイベントを発火
+        AttachmentUploaded::dispatch($attachment);
         
         // 201 Created でJSONを返す (file_url アクセサも自動で含まれる)
         return response()->json($attachment, 201);
     }
-    
+
     /**
      * 添付ファイルのレビュー状況を更新する (API)
      * ★ このメソッドを追加

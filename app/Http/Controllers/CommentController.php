@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Gate;
+use App\Events\CommentPosted;
 
 class CommentController extends Controller
 {
@@ -34,8 +35,12 @@ class CommentController extends Controller
             'user_id' => Auth::id(), // 認証済みユーザーのID
         ]);
 
-        // 作成したコメントを返す (ユーザー情報も一緒に読み込む)
+        // ★ 修正: 'user' のみロード（UIの即時反映に必要）
         $comment->load('user');
+
+        // ★ 2. イベントを発火させる
+        //    (リスナー 'SendCommentNotification' がこれをキャッチする)
+        CommentPosted::dispatch($comment);
 
         // 201 Created でJSONを返す
         return response()->json($comment, 201);
