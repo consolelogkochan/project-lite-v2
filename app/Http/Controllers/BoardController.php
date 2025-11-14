@@ -64,7 +64,7 @@ class BoardController extends Controller
 
         // 3. リストと関連データを Eager Loading
         $lists = $board->lists()
-                       ->with('cards.labels', 'cards.checklists.items', 'cards.attachments.user')
+                       ->with('cards', 'cards.labels', 'cards.checklists.items', 'cards.attachments.user', 'cards.comments') 
                        ->orderBy('order')->get();
         
         // 4. ビューに渡す

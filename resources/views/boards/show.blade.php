@@ -47,6 +47,7 @@
             editedChecklistTitle: "", // 編集用のチェックリストタイトル
             addingList: false,
             showInviteModal: false, // 招待モーダルの表示状態
+            filterKeyword: "", // ★ 1. フィルターのキーワードを保持する変数を追加
             boardLabels: [],
             boardMembers: [], // ボードの全メンバーを保持する配列
             newListTitle: "",
@@ -474,15 +475,7 @@
                     this.selectedCardData.description = updatedCard.description; 
                     
                     // 2. メインボード（背景）のデータも更新 (同期のため)
-                    // (※説明文はカンバンボード一覧には表示されないが、
-                    // 将来的に使う可能性を考慮し同期させておく)
-                    const listIndex = this.lists.findIndex(l => l.id == updatedCard.board_list_id);
-                    if (listIndex > -1) {
-                        const cardIndex = this.lists[listIndex].cards.findIndex(c => c.id == updatedCard.id);
-                        if (cardIndex > -1) {
-                            this.lists[listIndex].cards[cardIndex].description = updatedCard.description;
-                        }
-                    }
+                    this.syncBoardData();
                     
                     // 3. 編集状態をリセット
                     this.editingCardDescription = false;
@@ -521,6 +514,8 @@
                     // 1. モーダル内のコメント配列の「先頭」に新しいコメントを追加
                     // (CardController@show が latest() で取得するため、UIも先頭に追加)
                     this.selectedCardData.comments.unshift(newComment);
+
+                    this.syncBoardData();
                     
                     // 2. フォームをクリアする (コールバックを実行)
                     detail.callback();
@@ -557,6 +552,7 @@
                     const index = this.selectedCardData.comments.findIndex(c => c.id === detail.comment.id);
                     if (index > -1) {
                         this.selectedCardData.comments.splice(index, 1);
+                        this.syncBoardData();
                     }
                 })
                 .catch(error => {
@@ -893,6 +889,8 @@
                     // ★ 成功時の処理 ★
                     // 1. モーダル内の checklists 配列に追加
                     this.selectedCardData.checklists.push(newChecklist);
+
+                    this.syncBoardData();
                     
                     // 2. ポップオーバーのフォームをリセット (コールバックを実行)
                     detail.callback();
@@ -935,6 +933,7 @@
                     const checklistIndex = this.selectedCardData.checklists.findIndex(c => c.id === detail.checklist.id);
                     if (checklistIndex > -1) {
                         this.selectedCardData.checklists[checklistIndex].items.push(newItem);
+                        this.syncBoardData();
                     }
                     
                     // 2. ポップオーバーのフォームをリセット (コールバックを実行)
@@ -968,6 +967,7 @@
                     // UIの "is_completed" 状態を、サーバーからのレスポンスで上書き（同期）する
                     detail.item.is_completed = updatedItem.is_completed;
                     // (プログレスバーは item.is_completed を参照しているため、自動で更新される)
+                    this.syncBoardData();
                 })
                 .catch(error => {
                     console.error("Error toggling checklist item:", error);
@@ -996,6 +996,7 @@
                     }
                     // ★ 修正: .splice() の代わりに、.filter() で新しい配列を作成
                     detail.checklist.items = detail.checklist.items.filter(i => i.id !== detail.item.id);
+                    this.syncBoardData();
                 })
                 .catch(error => {
                     console.error("Error deleting checklist item:", error);
@@ -1168,6 +1169,7 @@
                     
                     // ★ 修正: .splice() の代わりに、.filter() で新しい配列を作成
                     this.selectedCardData.checklists = this.selectedCardData.checklists.filter(c => c.id !== detail.checklist.id);
+                    this.syncBoardData();
                 })
                 .catch(error => {
                     console.error("Error deleting checklist:", error);
@@ -1203,6 +1205,8 @@
                     // ★ 成功時の処理 ★
                     // 1. モーダル内の attachments 配列に追加
                     this.selectedCardData.attachments.push(newAttachment);
+
+                    this.syncBoardData();
                     
                     // 2. ポップオーバーを閉じる (コールバックを実行)
                     detail.callback();
@@ -1239,6 +1243,7 @@
                     
                     // ★ 修正: .splice() の代わりに、.filter() で新しい配列を作成
                     this.selectedCardData.attachments = this.selectedCardData.attachments.filter(a => a.id !== detail.attachment.id);
+                    this.syncBoardData();
                 })
                 .catch(error => {
                     console.error("Error deleting attachment:", error);
@@ -1537,6 +1542,90 @@
                     // エラーが起きても編集フォームを閉じる
                     this.editingCardTitleModal = false;
                 });
+            },
+
+            syncBoardData() {
+                if (!this.selectedCardData) return;
+                
+                const cardId = this.selectedCardData.id;
+                
+                // 全リストから該当するカードを探す
+                for (let list of this.lists) {
+                    const card = list.cards.find(c => c.id === cardId);
+                    if (card) {
+                        // フッター表示に必要なデータを同期 (参照渡しではなく、配列の中身を更新)
+                        card.description = this.selectedCardData.description;
+                        
+                        // 配列はリアクティブに検知させるため、代入で更新
+                        card.comments = this.selectedCardData.comments;
+                        card.attachments = this.selectedCardData.attachments;
+                        card.checklists = this.selectedCardData.checklists;
+                        
+                        break; // 見つかったら終了
+                    }
+                }
+            },
+
+            get filteredLists() {
+                const keyword = this.filterKeyword.trim();
+                // キーワードが空なら、全てのリストをそのまま返す
+                if (keyword === "") {
+                    return this.lists;
+                }
+
+                // キーワードを正規化 (NFKC) し、小文字に
+                // (例: "Ｔａｓｋ" や "ﾀｽｸ" を "task" や "タスク" に統一)
+                const normalizedKeyword = keyword.normalize("NFKC").toLowerCase(); // ★ "NFKC"
+                
+                // 1. 各リスト内の「カード」をキーワードで絞り込む
+                const listsWithFilteredCards = this.lists.map(list => {
+                    
+                    const matchingCards = list.cards.filter(card => {
+                        
+                        // 1. カードタイトルのチェック (既存)
+                        if (card.title.normalize("NFKC").toLowerCase().includes(normalizedKeyword)) { // ★ "NFKC"
+                            return true;
+                        }
+
+                        // 2. [NEW] カード説明文のチェック
+                        if (card.description && card.description.normalize("NFKC").toLowerCase().includes(normalizedKeyword)) { // ★ "NFKC"
+                            return true;
+                        }
+
+                        // 3. [NEW] コメント内容のチェック
+                        if (card.comments && card.comments.some(comment => 
+                            comment.content.normalize("NFKC").toLowerCase().includes(normalizedKeyword) // ★ "NFKC"
+                        )) {
+                            return true;
+                        }
+
+                        // 4. [NEW] 添付ファイル名のチェック
+                        if (card.attachments && card.attachments.some(attachment => 
+                            attachment.file_name.normalize("NFKC").toLowerCase().includes(normalizedKeyword) // ★ "NFKC"
+                        )) {
+                            return true;
+                        }
+
+                        // 5. [NEW] チェックリスト (タイトルとアイテム) のチェック
+                        if (card.checklists && card.checklists.some(checklist => 
+                            checklist.title.normalize("NFKC").toLowerCase().includes(normalizedKeyword) || // ★ "NFKC"
+                            checklist.items.some(item => item.content.normalize("NFKC").toLowerCase().includes(normalizedKeyword)) // ★ "NFKC"
+                        )) {
+                            return true;
+                        }
+
+                        // すべて一致しなかった場合
+                        return false;
+                    });
+                    
+                    return { ...list, cards: matchingCards };
+                });
+
+                // 2. 「リスト」自体を絞り込む (既存)
+                return listsWithFilteredCards.filter(list => 
+                    list.title.normalize("NFKC").toLowerCase().includes(normalizedKeyword) || // ★ "NFKC"
+                    list.cards.length > 0 // (または、カードが1枚でも残っている)
+                );
             }
         }'
         x-init="init(); watchSelectedCard();">
@@ -1599,9 +1688,39 @@
                                 </span>
                             @endif
                         </div>
-                        <button class="text-gray-400 hover:text-gray-600 dark:hover:text-white">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"></path></svg>
-                        </button>
+                        {{-- ★ [NEW] フィルター・ポップオーバー --}}
+                        <div x-data="{ open: false }" class="relative">
+                            {{-- 1. フィルター・ボタン本体 --}}
+                            <button @click="open = !open" 
+                                    class="text-gray-400 hover:text-gray-600 dark:hover:text-white p-2 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"></path></svg>
+                            </button>
+                            
+                            {{-- 2. ポップオーバー本体 --}}
+                            <div x-show="open"
+                                @click.away="open = false"
+                                x-transition
+                                x-cloak
+                                class="absolute z-20 right-0 mt-1 w-64 bg-white dark:bg-gray-900 rounded-md shadow-lg border border-gray-200 dark:border-gray-700"
+                            >
+                                <div class="p-4">
+                                    <h4 class="text-center text-sm font-medium text-gray-500 dark:text-gray-400 mb-3">Filter Board</h4>
+                                    <button @click="open = false" type="button" class="absolute top-2 right-2 p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                                    </button>
+
+                                    {{-- キーワード入力欄 --}}
+                                    <div>
+                                        <label for="filter-keyword" class="sr-only">Keyword</label>
+                                        {{-- ★ 3. 修正: '$root.' を削除 --}}
+                                        <input type="text" id="filter-keyword"
+                                            x-model.debounce.300ms="filterKeyword" 
+                                            class="block w-full text-sm rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-blue-500 focus:border-blue-500"
+                                            placeholder="Filter by keyword...">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                         {{-- ★ 修正: @click で open-invite-modal イベントを発火 --}}
                         <x-primary-button @click.prevent="showInviteModal = true">
                             <svg class="w-4 h-4 me-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"></path></svg>
@@ -1618,7 +1737,9 @@
             <div class="flex space-x-4 h-full" x-sortable
             @sortable-end.self="handleSortEnd($event.detail)">
                 {{-- ▼▼▼ PHPの@foreachをAlpine.jsの<template x-for>に変更 ▼▼▼ --}}
-                <template x-for="list in lists" :key="list.id">
+                {{-- リストのループ --}}
+                {{-- ★ 修正: 'lists' を 'filteredLists' に変更 --}}
+                <template x-for="list in filteredLists" :key="list.id">
                     <div class="flex-shrink-0 w-72 bg-gray-100 dark:bg-gray-700 rounded-md shadow-md" :data-id="list.id">
                         {{-- リストヘッダー --}}
                         <div class="p-3 flex justify-between items-center">
@@ -1696,6 +1817,53 @@
                                         :class="{ 'line-through text-gray-500 dark:text-gray-400': card.is_completed }"
                                         x-text="card.title">
                                         </p>
+
+                                        {{-- ★★★ [NEW] カードフッター (タイトルの下、divの中に挿入) ★★★ --}}
+                                        <div class="flex items-center gap-3 mt-2 text-gray-500 dark:text-gray-400">
+                                            
+                                            {{-- 1. 説明文アイコン --}}
+                                            <template x-if="card.description">
+                                                <div title="This card has a description">
+                                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h7"></path></svg>
+                                                </div>
+                                            </template>
+
+                                            {{-- 2. コメント数 --}}
+                                            <template x-if="card.comments && card.comments.length > 0">
+                                                <div class="flex items-center gap-1 text-xs" title="Comments">
+                                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>
+                                                    <span x-text="card.comments.length"></span>
+                                                </div>
+                                            </template>
+
+                                            {{-- 3. 添付ファイル数 --}}
+                                            <template x-if="card.attachments && card.attachments.length > 0">
+                                                <div class="flex items-center gap-1 text-xs" title="Attachments">
+                                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.414a4 4 0 00-5.656-5.656l-6.415 6.415a6 6 0 108.486 8.486L20.5 13"></path></svg>
+                                                    <span x-text="card.attachments.length"></span>
+                                                </div>
+                                            </template>
+
+                                            {{-- 4. チェックリスト進捗 --}}
+                                            <template x-if="card.checklists && card.checklists.some(c => c.items.length > 0)">
+                                                <div class="flex items-center gap-1 text-xs" title="Checklist items">
+                                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                                    <span x-text="
+                                                        (() => {
+                                                            let total = 0;
+                                                            let completed = 0;
+                                                            card.checklists.forEach(list => {
+                                                                total += list.items.length;
+                                                                completed += list.items.filter(i => i.is_completed).length;
+                                                            });
+                                                            return completed + '/' + total;
+                                                        })()
+                                                    "></span>
+                                                </div>
+                                            </template>
+
+                                        </div>
+                                        {{-- ★★★ フッターここまで ★★★ --}}
                                     </div>
                                     
                                     {{-- ★ 6. [MOVED] 削除ボタン (右端に配置) --}}

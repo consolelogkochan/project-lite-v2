@@ -1,6 +1,7 @@
 <div
+    x-data="{ zoomedImage: null }" {{-- ★ 追加: ズーム画像のURLを保持する変数 --}}
     x-show="selectedCardId !== null"
-    @keydown.escape.window="selectedCardId = null; selectedCardData = null" {{-- 修正: 閉じる時にデータもクリア --}}
+    @keydown.escape.window="if(zoomedImage) { zoomedImage = null } else { selectedCardId = null; selectedCardData = null }" {{-- ★ 修正: ESCキーでズームを閉じる優先度を設定 --}}
     x-cloak
     class="fixed inset-0 z-50 flex items-center justify-center p-4 md:p-8"
 >
@@ -715,7 +716,8 @@
                                                 {{-- 画像の場合 (is_image は Attachment モデルのアクセサ) --}}
                                                 <template x-if="attachment.is_image">
                                                     <img :src="attachment.file_url" :alt="attachment.file_name"
-                                                         class="w-full h-full object-cover rounded-md">
+                                                        @click="zoomedImage = attachment.file_url" {{-- ★ クリックでズーム --}}
+                                                        class="w-full h-full object-cover rounded-md cursor-pointer hover:opacity-80 transition-opacity"> {{-- ★ クラス追加 --}}
                                                 </template>
                                                 {{-- 画像以外の場合 (汎用アイコン) --}}
                                                 <template x-if="!attachment.is_image">
@@ -1177,4 +1179,26 @@
         {{-- ★★★ 変更ここまで ★★★ --}}
 
     </div>
+    {{-- ★★★ 画像ズーム用モーダル (ここから追加) ★★★ --}}
+    <div x-show="zoomedImage" 
+         x-transition:enter="transition ease-out duration-300"
+         x-transition:enter-start="opacity-0"
+         x-transition:enter-end="opacity-100"
+         x-transition:leave="transition ease-in duration-200"
+         x-transition:leave-start="opacity-100"
+         x-transition:leave-end="opacity-0"
+         class="fixed inset-0 z-[60] flex items-center justify-center bg-black bg-opacity-90 p-4"
+         @click="zoomedImage = null"> {{-- 背景クリックで閉じる --}}
+        
+        <div class="relative max-w-full max-h-full">
+            {{-- 閉じるボタン --}}
+            <button @click="zoomedImage = null" class="absolute -top-10 right-0 text-white hover:text-gray-300 focus:outline-none">
+                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
+            
+            {{-- 画像本体 --}}
+            <img :src="zoomedImage" class="max-w-full max-h-[90vh] object-contain rounded shadow-2xl" @click.stop>
+        </div>
+    </div>
+    {{-- ★★★ 画像ズーム用モーダル (追加ここまで) ★★★ --}}
 </div>
