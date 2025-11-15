@@ -48,6 +48,9 @@
             addingList: false,
             showInviteModal: false, // 招待モーダルの表示状態
             filterKeyword: "", // ★ 1. フィルターのキーワードを保持する変数を追加
+            viewMode: "board",
+            calendarInstance: null,
+            calendarInstance: null, // カレンダーのインスタンス
             boardLabels: [],
             boardMembers: [], // ボードの全メンバーを保持する配列
             newListTitle: "",
@@ -1626,26 +1629,205 @@
                     list.title.normalize("NFKC").toLowerCase().includes(normalizedKeyword) || // ★ "NFKC"
                     list.cards.length > 0 // (または、カードが1枚でも残っている)
                 );
+            },
+
+            initCalendar() {
+                // 既にインスタンスがあれば、イベントを再取得するだけ
+                if (this.calendarInstance) {
+                    this.calendarInstance.refetchEvents();
+                    return;
+                }
+                
+                // カレンダーを描画するDOM要素を取得
+                const calendarEl = this.$refs.calendarContainer;
+                
+                this.calendarInstance = new window.FullCalendar.Calendar(calendarEl, {
+                    plugins: [ window.FullCalendar.dayGridPlugin, window.FullCalendar.interactionPlugin ], // "dayGrid" (月表示) プラグインを使用
+                    initialView: "dayGridMonth", // 月表示
+                    height: "auto", // 親コンテナの高さに合わせる
+                    
+                    // ヘッダーのボタン（例: < > Today）
+                    headerToolbar: {
+                        left: "prev,next today",
+                        center: "title",
+                        right: "" // "dayGridMonth,timeGridWeek,timeGridDay" なども可能
+                    },
+
+                    // ★ 3. [修正] APIからイベント（カード）を取得 (キーワード付与)
+                    events: (fetchInfo, successCallback, failureCallback) => {
+                        const url = new URL("{{ route('boards.calendarEvents', $board) }}");
+                        
+                        // "filterKeyword" (親スコープ) の値を取得
+                        const keyword = this.filterKeyword.trim();
+                        if (keyword !== "") {
+                            // "q" パラメータとしてキーワードを追加
+                            url.searchParams.append("q", keyword);
+                        }
+                        
+                        // (FullCalendarが要求する start/end はAPI側で使わないので追加不要)
+                        
+                        fetch(url)
+                            .then(response => {
+                                if (!response.ok) {
+                                    throw new Error("Failed to load calendar events.");
+                                }
+                                return response.json();
+                            })
+                            .then(data => {
+                                // 成功したデータをカレンダーに渡す
+                                successCallback(data);
+                            })
+                            .catch(error => {
+                                console.error(error);
+                                alert(error.message);
+                                failureCallback(error);
+                            });
+                    },
+
+                    // ★ 4. イベント（カード）をクリックした時の動作
+                    eventClick: (info) => {
+                        info.jsEvent.preventDefault(); // デフォルトのURL遷移を止める
+                        
+                        // info.event.id (Card ID) を使ってモーダルを開く
+                        this.selectedCardId = info.event.id;
+                    },
+
+                    // ★★★ ここから追加 (インタラクティブ機能) ★★★
+                    editable: true, // ドラッグ＆リサイズを有効化
+                    eventResizableFromStart: true, // ★ これを追加 (開始日側もリサイズ可能にする)
+
+                    // 1. イベント（カード）をドラッグ＆ドロップした時
+                    eventDrop: (info) => {
+                        this.updateCardDates(info, "drop");
+                    },
+
+                    // 2. イベント（カード）の期間をリサイズした時
+                    eventResize: (info) => {
+                        this.updateCardDates(info, "resize");
+                    }
+                    // ★★★ 追加ここまで ★★★
+                });
+
+                // カレンダーを描画
+                this.calendarInstance.render();
+            },
+
+            updateCardDates(info, actionType) {
+                const event = info.event;
+                const revertCallback = info.revert;
+
+                let newStartDate = event.start;
+                let newEndDate = event.end; // "end" はリサイズ後の日付（翌日0時）
+
+                // --- FullCalendar の日付補正 (allDay: true の場合) ---
+                if (newEndDate) {
+                    // FullCalendar の "end" は「翌日の0時」を指すため、
+                    // 1日（実際には1秒）引いて、DBに保存する「その日の終わり」に直す
+                    // (例: 22日まで伸ばすと、event.end は 23日の0時になる)
+                    newEndDate = new Date(newEndDate.getTime() - 1000); // 1秒引く
+                } else {
+                    // ★ 2. 修正: "end" が null の場合 (1日イベントのDrop時など)
+                    // 元の duration (期間) を oldEvent から計算して復元する
+                    // (user_346_fix のロジックを流用しつつ、start/endを明確にする)
+                    const oldStart = info.oldEvent.start;
+                    const oldEnd = info.oldEvent.end || oldStart; // oldEndがnullの場合も考慮
+                    const duration = oldEnd.getTime() - oldStart.getTime();
+
+                    newEndDate = new Date(newStartDate.getTime() + duration);
+                }
+                
+                // (user_345_fix の "drop" && !newEndDate のロジックは、
+                //  API側 (user_346_fix) で "end" を必ず返すようにしたので不要になった)
+                // --- 補正ここまで ---
+
+                fetch(`/cards/${event.id}`, { 
+                    method: "PATCH",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-CSRF-TOKEN": document.querySelector("meta[name=\"csrf-token\"]").getAttribute("content"),
+                        "Accept": "application/json"
+                    },
+                    body: JSON.stringify({
+                        // toISOString() は UTC (協定世界時) に変換する
+                        start_date: newStartDate.toISOString(),
+                        end_date: newEndDate.toISOString()
+                    })
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error("Failed to update card dates.");
+                    }
+                    return response.json();
+                })
+                .then(updatedCard => {
+                    // 成功時の処理 (モーダルデータも同期)
+                    if (this.selectedCardData && this.selectedCardData.id == updatedCard.id) {
+                        this.selectedCardData.start_date = updatedCard.start_date;
+                        this.selectedCardData.end_date = updatedCard.end_date;
+                    }
+                    
+                    // カレンダーのイベントも（念のため）APIから返ってきた値で更新
+                    const calendarEvent = this.calendarInstance.getEventById(updatedCard.id);
+                    if (calendarEvent) {
+                        // APIが返す end_date (例: 22日 23:59) を
+                        // FullCalendar用の「翌日0時」に補正
+                        let apiEndDate = new Date(updatedCard.end_date);
+                        let calendarEnd = new Date(apiEndDate.getFullYear(), apiEndDate.getMonth(), apiEndDate.getDate() + 1);
+
+                        calendarEvent.setDates(
+                            new Date(updatedCard.start_date), 
+                            calendarEnd,
+                            { allDay: true }
+                        );
+                    }
+                })
+                .catch(error => {
+                    console.error("Error updating card dates:", error);
+                    alert("An error occurred while updating the card date.");
+                    revertCallback(); // 失敗時にドラッグを元に戻す
+                });
             }
         }'
-        x-init="init(); watchSelectedCard();">
+        x-init="
+            init(); 
+            watchSelectedCard();
+            
+            // ★ [NEW] フィルターキーワードを監視
+            $watch('filterKeyword', (value) => { 
+                // カレンダービューを表示中、かつ、カレンダーが初期化済みなら
+                if (viewMode === 'calendar' && calendarInstance) {
+                    // APIを再実行（events: 関数が再度呼び出される）
+                    calendarInstance.refetchEvents(); 
+                } 
+            });
+        ">
         {{-- (1) カンバンボード専用ヘッダー (変更なし) --}}
         <div class="bg-white dark:bg-gray-800 shadow-md">
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 <div class="flex items-center justify-between h-16">
                     <div class="flex items-center space-x-4">
                         <h1 class="text-2xl font-bold text-gray-800 dark:text-gray-200">{{ $board->title }}</h1>
-                        {{-- (ビュー切替アイコンは変更なし) --}}
-                        <div class="flex space-x-2">
-                            <button class="p-2 rounded-md bg-indigo-100 text-indigo-600">
-                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path></svg>
+                        {{-- ★ [NEW] ビュー切替ボタン --}}
+                        <div class="flex items-center space-x-1 p-1 bg-gray-200 dark:bg-gray-700 rounded-md">
+                            {{-- 1. ボード（カンバン）ビュー --}}
+                            <button @click="viewMode = 'board'"
+                                    :class="{
+                                        'bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-100 shadow': viewMode === 'board',
+                                        'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200': viewMode !== 'board'
+                                    }"
+                                    class="px-3 py-1 text-sm font-medium rounded-md transition-colors">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v12a2 2 0 01-2 2h-2a2 2 0 01-2-2V6z"></path></svg>
                             </button>
-                            <button class="p-2 rounded-md text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700">
+                            {{-- 2. カレンダービュー --}}
+                            <button @click="viewMode = 'calendar'"
+                                    :class="{
+                                        'bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-100 shadow': viewMode === 'calendar',
+                                        'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200': viewMode !== 'calendar'
+                                    }"
+                                    class="px-3 py-1 text-sm font-medium rounded-md transition-colors">
                                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
                             </button>
-                            <button class="p-2 rounded-md text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700">
-                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 14h18M3 6h18M3 18h18"></path></svg>
-                            </button>
+                            
                         </div>
                     </div>
 
@@ -1734,8 +1916,10 @@
         {{-- (2) カンバンボード本体 --}}
         <div class="p-4 sm:p-6 lg:p-8 h-full flex-grow overflow-x-auto">
 
-            <div class="flex space-x-4 h-full" x-sortable
-            @sortable-end.self="handleSortEnd($event.detail)">
+            {{-- ★ 1. [修正] カンバンボード (x-show を追加) --}}
+            <div x-show="viewMode === 'board'"
+                 class="flex space-x-4 h-full" 
+                 x-sortable @sortable-end.self="handleSortEnd($event.detail)">
                 {{-- ▼▼▼ PHPの@foreachをAlpine.jsの<template x-for>に変更 ▼▼▼ --}}
                 {{-- リストのループ --}}
                 {{-- ★ 修正: 'lists' を 'filteredLists' に変更 --}}
@@ -1940,6 +2124,25 @@
                 </div>
                 
             </div>
+
+            {{-- ★ 2. [MODIFIED] カレンダービュー用コンテナ --}}
+            <div x-show="viewMode === 'calendar'" x-cloak
+                 x-ref="calendarContainer" {{-- ★ 1. JSが参照するための名前 --}}
+                 
+                 {{-- ★ 2. 表示された時にカレンダーを初期化する --}}
+                 x-init="$watch('viewMode', (value) => {
+                    if (value === 'calendar') {
+                        // 少し待機しないとカレンダーのサイズ計算が失敗することがある
+                        setTimeout(() => initCalendar(), 50); 
+                    }
+                 })"
+                 class="w-full h-full bg-white dark:bg-gray-800 rounded-md shadow p-4"
+            >
+                 {{-- (TODOの <p> タグは削除) --}}
+            </div>
+
+            
+
             {{-- ★ ここから追加: カード詳細モーダル --}}
             <x-card-detail-modal />
             {{-- ★ 追加ここまで --}}

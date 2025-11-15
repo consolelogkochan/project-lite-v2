@@ -46,6 +46,11 @@ Route::middleware('auth')->group(function () {
 
     // リスト
     Route::post('/boards/{board}/lists', [ListController::class, 'store'])->name('lists.store');
+
+    // ★ ここから追加: カレンダー用のイベント（カード）取得API
+    Route::get('/boards/{board}/calendar-events', [BoardController::class, 'getCalendarEvents'])->name('boards.calendarEvents');
+
+    
     
     // ▼▼▼ "update-order"をワイルドカードより「上」に移動 ▼▼▼
     Route::patch('/lists/update-order', [ListController::class, 'updateOrder'])->name('lists.updateOrder');

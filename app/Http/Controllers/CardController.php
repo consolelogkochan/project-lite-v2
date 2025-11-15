@@ -120,6 +120,7 @@ class CardController extends Controller
             ],
 
             'is_completed' => 'sometimes|required|boolean',
+            'board_list_id' => 'sometimes|required|integer|exists:lists,id',
         ]);
 
         if ($validator->fails()) {

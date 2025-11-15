@@ -1,14 +1,26 @@
 import './bootstrap';
-
 import Alpine from 'alpinejs';
-
 window.Alpine = Alpine;
 
-Alpine.start();
+// --- 1. ライブラリのインポートを先に ---
 
-// ★ ここから追加
+// flatpickr (日付ピッカー)
 import flatpickr from "flatpickr";
-import "flatpickr/dist/flatpickr.min.css"; // flatpickrのCSS
+import "flatpickr/dist/flatpickr.min.css";
+window.flatpickr = flatpickr;
 
-window.flatpickr = flatpickr; // Alpine.jsから使えるようグローバルに公開
-// ★ 追加ここまで
+// FullCalendar (本体と全プラグイン)
+import { Calendar } from '@fullcalendar/core';
+import dayGridPlugin from '@fullcalendar/daygrid';
+import interactionPlugin from '@fullcalendar/interaction';
+
+// グローバルスコープ（window）に登録
+window.FullCalendar = {
+    Calendar: Calendar,
+    dayGridPlugin: dayGridPlugin,
+    interactionPlugin: interactionPlugin,
+    
+};
+
+// --- 2. 最後に Alpine を起動 ---
+Alpine.start();

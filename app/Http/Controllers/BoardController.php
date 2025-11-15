@@ -10,6 +10,8 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request; 
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
+use App\Models\User;
+use App\Models\Card;
 
 
 class BoardController extends Controller
@@ -97,4 +99,97 @@ class BoardController extends Controller
         // 通常のWebリクエストの場合 (ダッシュボードに戻す)
         return redirect()->route('dashboard')->with('status', 'Board deleted successfully.');
     }
+
+    /**
+     * カレンダービュー用のカード情報を取得する (API)
+     */
+    public function getCalendarEvents(Request $request, Board $board)
+    {
+        // 認可チェック
+        $this->authorize('view', $board);
+
+        // キーワードを取得 (なければ空文字)
+        $keyword = $request->input('q', '');
+
+        // ★ 1. [Fix] 'hasManyThrough' (Board->cards()) が orWhereHas と競合するため、
+        //    先にリストIDを取得する
+        $listIds = $board->lists()->pluck('id');
+
+        // ★ 2. Card モデルを「直接」クエリする
+        $cardsQuery = Card::whereIn('board_list_id', $listIds)
+                          ->whereNotNull('end_date'); // 期限 (end_date) が必須
+
+        // 3. [NEW] キーワードが存在する場合、フィルターを実行
+        if (!empty($keyword)) {
+            $cardsQuery->where(function ($query) use ($keyword) {
+                // カード名
+                $query->where('title', 'like', "%{$keyword}%")
+                // 説明文
+                ->orWhere('description', 'like', "%{$keyword}%")
+                // コメント
+                ->orWhereHas('comments', function ($q) use ($keyword) {
+                    $q->where('content', 'like', "%{$keyword}%");
+                })
+                // 添付ファイル
+                ->orWhereHas('attachments', function ($q) use ($keyword) {
+                    $q->where('file_name', 'like', "%{$keyword}%");
+                })
+                // チェックリスト (タイトルまたはアイテム)
+                ->orWhereHas('checklists', function ($q) use ($keyword) {
+                    $q->where('title', 'like', "%{$keyword}%")
+                      ->orWhereHas('items', function ($iq) use ($keyword) {
+                          $iq->where('content', 'like', "%{$keyword}%");
+                      });
+                });
+            });
+        }
+        
+        $cards = $cardsQuery->get();
+
+        // 4. FullCalendar.js が要求する形式にマッピング（変換）
+        // (この部分は user_346_fix と同じ)
+        $events = $cards->map(function (Card $card) use ($board) {
+            
+            $end = $card->end_date;
+            $calendarEnd = $end->copy()->addDay()->startOfDay();
+            $start = $card->start_date ? $card->start_date->copy()->startOfDay() : $end->copy()->startOfDay();
+
+            return [
+                'id' => $card->id,
+                'title' => $card->title,
+                'start' => $start->toISOString(),
+                'end' => $calendarEnd->toISOString(),
+                'allDay' => true,
+                'url' => route('boards.show', $board->id) . '?card=' . $card->id,
+                'color' => $card->is_completed ? '#16a34a' : '#2563eb',
+                'className' => $card->is_completed ? 'opacity-70' : '',
+            ];
+        });
+
+        return response()->json($events);
+    }
+
+    /**
+     * タイムラインビュー用のリソース（リスト）を取得する (API)
+     * ★ このメソッドを追加
+     */
+    public function getTimelineResources(Request $request, Board $board)
+    {
+        // 認可チェック
+        $this->authorize('view', $board);
+
+        // ボードに属するリストを `order` 順に取得
+        $lists = $board->lists()->orderBy('order')->get();
+
+        // FullCalendar Resource 形式 (id, title) にマッピング
+        $resources = $lists->map(function ($list) {
+            return [
+                'id' => $list->id,
+                'title' => $list->title,
+            ];
+        });
+
+        return response()->json($resources);
+    }
+
 }
