@@ -50,7 +50,7 @@
             filterKeyword: "", // ★ 1. フィルターのキーワードを保持する変数を追加
             viewMode: "board",
             calendarInstance: null,
-            calendarInstance: null, // カレンダーのインスタンス
+            timelineInstance: null, // ★ 1. [NEW] タイムラインのインスタンスを保持
             boardLabels: [],
             boardMembers: [], // ボードの全メンバーを保持する配列
             newListTitle: "",
@@ -611,16 +611,14 @@
             },
 
             updateCardDatesFromModal(detail) {
-                // detail = { card: {...}, startDate: "...", endDate: "...", reminder: "...", callback: () => {} }
                 const card = this.selectedCardData;
                 
-                // ★★★ ここからリマインダー日時 (reminder_at) の計算 ★★★
+                // ★★★ リマインダー日時の計算 (変更なし) ★★★
                 let reminder_at = null;
                 const endDate = detail.endDate ? new Date(detail.endDate) : null;
                 
                 if (endDate && detail.reminder !== "none") {
-                    let reminderDate = new Date(endDate.getTime()); // 期限日のコピーを作成
-
+                    let reminderDate = new Date(endDate.getTime()); 
                     if (detail.reminder === "10_minutes_before") {
                         reminderDate.setMinutes(reminderDate.getMinutes() - 10);
                     } else if (detail.reminder === "1_hour_before") {
@@ -628,12 +626,16 @@
                     } else if (detail.reminder === "1_day_before") {
                         reminderDate.setDate(reminderDate.getDate() - 1);
                     }
-                    
-                    // ★ 修正後: ローカル時刻を Y-m-d H:i:s 形式でフォーマット
-                    // (flatpickr のフォーマッタを流用)
                     reminder_at = window.flatpickr.formatDate(reminderDate, "Y-m-d H:i:S");
                 }
                 // ★★★ 計算ここまで ★★★
+
+                // ★ 1. [FIX Bug 1] タイムゾーンバグ修正
+                // Flatpickr のローカル日付文字列 (JST) を
+                // JavaScript の Date オブジェクトとして解釈し、
+                // .toISOString() で UTC 文字列に変換してから API に送信する
+                const startISO = detail.startDate ? new Date(detail.startDate).toISOString() : null;
+                const endISO = detail.endDate ? new Date(detail.endDate).toISOString() : null;
 
                 fetch(`/cards/${card.id}`, {
                     method: "PATCH",
@@ -642,9 +644,9 @@
                         "X-CSRF-TOKEN": document.querySelector("meta[name=\"csrf-token\"]").getAttribute("content")
                     },
                     body: JSON.stringify({ 
-                        start_date: detail.startDate,
-                        end_date: detail.endDate,
-                        reminder_at: reminder_at // ★ 計算した `reminder_at` (日時 or null) を送信
+                        start_date: startISO, // ★ 修正
+                        end_date: endISO,     // ★ 修正
+                        reminder_at: reminder_at
                     })
                 })
                 .then(response => {
@@ -663,20 +665,28 @@
                     // 1. モーダル内のデータを更新
                     this.selectedCardData.start_date = updatedCard.start_date;
                     this.selectedCardData.end_date = updatedCard.end_date;
-                    this.selectedCardData.reminder_at = updatedCard.reminder_at; // ★ reminder_at も更新
+                    this.selectedCardData.reminder_at = updatedCard.reminder_at;
                     
-                    // 2. メインボード（背景）のデータも更新
+                    // 2. メインボード（背景）のデータも更新 (変更なし)
                     const listIndex = this.lists.findIndex(l => l.id == updatedCard.board_list_id);
                     if (listIndex > -1) {
                         const cardIndex = this.lists[listIndex].cards.findIndex(c => c.id == updatedCard.id);
                         if (cardIndex > -1) {
                             this.lists[listIndex].cards[cardIndex].start_date = updatedCard.start_date;
                             this.lists[listIndex].cards[cardIndex].end_date = updatedCard.end_date;
-                            this.lists[listIndex].cards[cardIndex].reminder_at = updatedCard.reminder_at; // ★ reminder_at も更新
+                            this.lists[listIndex].cards[cardIndex].reminder_at = updatedCard.reminder_at;
                         }
                     }
+
+                    // ★ 3. [FIX Bug 2] カレンダーとタイムラインに即時反映
+                    if (this.calendarInstance) {
+                        this.calendarInstance.refetchEvents();
+                    }
+                    if (this.timelineInstance) {
+                        this.timelineInstance.refetchEvents();
+                    }
                     
-                    // 3. ポップオーバーを閉じる (コールバックを実行)
+                    // 4. ポップオーバーを閉じる (コールバックを実行)
                     detail.callback();
                 })
                 .catch(error => {
@@ -1632,39 +1642,34 @@
             },
 
             initCalendar() {
-                // 既にインスタンスがあれば、イベントを再取得するだけ
+                // (既存のインスタンスチェックは変更なし)
                 if (this.calendarInstance) {
                     this.calendarInstance.refetchEvents();
                     return;
                 }
                 
-                // カレンダーを描画するDOM要素を取得
                 const calendarEl = this.$refs.calendarContainer;
                 
                 this.calendarInstance = new window.FullCalendar.Calendar(calendarEl, {
-                    plugins: [ window.FullCalendar.dayGridPlugin, window.FullCalendar.interactionPlugin ], // "dayGrid" (月表示) プラグインを使用
-                    initialView: "dayGridMonth", // 月表示
-                    height: "auto", // 親コンテナの高さに合わせる
+                    plugins: [ window.FullCalendar.dayGridPlugin, window.FullCalendar.interactionPlugin ],
+                    initialView: "dayGridMonth",
+                    height: "auto",
                     
-                    // ヘッダーのボタン（例: < > Today）
                     headerToolbar: {
                         left: "prev,next today",
                         center: "title",
-                        right: "" // "dayGridMonth,timeGridWeek,timeGridDay" なども可能
+                        right: ""
                     },
 
-                    // ★ 3. [修正] APIからイベント（カード）を取得 (キーワード付与)
                     events: (fetchInfo, successCallback, failureCallback) => {
-                        const url = new URL("{{ route('boards.calendarEvents', $board) }}");
+                        const url = new URL("{{ route("boards.calendarEvents", $board) }}");
                         
-                        // "filterKeyword" (親スコープ) の値を取得
                         const keyword = this.filterKeyword.trim();
                         if (keyword !== "") {
-                            // "q" パラメータとしてキーワードを追加
                             url.searchParams.append("q", keyword);
                         }
                         
-                        // (FullCalendarが要求する start/end はAPI側で使わないので追加不要)
+                        url.searchParams.append("view", "calendar");
                         
                         fetch(url)
                             .then(response => {
@@ -1673,10 +1678,7 @@
                                 }
                                 return response.json();
                             })
-                            .then(data => {
-                                // 成功したデータをカレンダーに渡す
-                                successCallback(data);
-                            })
+                            .then(data => successCallback(data))
                             .catch(error => {
                                 console.error(error);
                                 alert(error.message);
@@ -1684,32 +1686,96 @@
                             });
                     },
 
-                    // ★ 4. イベント（カード）をクリックした時の動作
                     eventClick: (info) => {
-                        info.jsEvent.preventDefault(); // デフォルトのURL遷移を止める
-                        
-                        // info.event.id (Card ID) を使ってモーダルを開く
+                        info.jsEvent.preventDefault();
                         this.selectedCardId = info.event.id;
                     },
 
-                    // ★★★ ここから追加 (インタラクティブ機能) ★★★
-                    editable: true, // ドラッグ＆リサイズを有効化
-                    eventResizableFromStart: true, // ★ これを追加 (開始日側もリサイズ可能にする)
+                    // ★★★ ここから修正 ★★★
+                    editable: true, // ドラッグ（移動）は有効
 
-                    // 1. イベント（カード）をドラッグ＆ドロップした時
+                    // 1. 伸縮（Resize）に関する設定を削除（または false に）
+                    eventResizableFromStart: false, // 削除
+                    
+                    // 2. eventDrop (移動) は残す
                     eventDrop: (info) => {
                         this.updateCardDates(info, "drop");
                     },
 
-                    // 2. イベント（カード）の期間をリサイズした時
+                    // 3. eventResize (伸縮) のコールバックを削除
+                    // eventResize: (info) => { ... }
+                    // ★★★ 修正ここまで ★★★
+                });
+
+                this.calendarInstance.render();
+            },
+
+            initTimeline() {
+                // (既存のインスタンスチェックは変更なし)
+                if (this.timelineInstance) {
+                    this.timelineInstance.refetchEvents();
+                    return;
+                }
+                
+                const timelineEl = this.$refs.timelineContainer;
+                
+                this.timelineInstance = new window.FullCalendar.Calendar(timelineEl, {
+                    plugins: [ 
+                        window.FullCalendar.timeGridPlugin,
+                        window.FullCalendar.interactionPlugin
+                    ], 
+                    initialView: "timeGridWeek",
+                    height: "auto",
+                    
+                    headerToolbar: {
+                        left: "prev,next today",
+                        center: "title",
+                        right: "timeGridWeek,timeGridDay"
+                    },
+
+                    // ★ 1. [FIX] "events" をオブジェクトから関数に変更 (フィルター対応)
+                    events: (fetchInfo, successCallback, failureCallback) => {
+                        const url = new URL("{{ route("boards.calendarEvents", $board) }}");
+                        
+                        const keyword = this.filterKeyword.trim();
+                        if (keyword !== "") {
+                            url.searchParams.append("q", keyword);
+                        }
+                        
+                        url.searchParams.append("view", "timeline"); // "view" を使用
+                        
+                        fetch(url)
+                            .then(response => {
+                                if (!response.ok) {
+                                    throw new Error("Failed to load timeline events.");
+                                }
+                                return response.json();
+                            })
+                            .then(data => successCallback(data))
+                            .catch(error => {
+                                console.error(error);
+                                alert(error.message);
+                                failureCallback(error);
+                            });
+                    },
+
+                    eventClick: (info) => {
+                        info.jsEvent.preventDefault(); 
+                        this.selectedCardId = info.event.id;
+                    },
+                    editable: true,
+                    eventResizableFromStart: true, 
+                    
+                    // ★ 2. [FIX] "updateCardDates" を呼び出し、info オブジェクト全体を渡す
+                    eventDrop: (info) => {
+                        this.updateCardDates(info, "drop");
+                    },
                     eventResize: (info) => {
                         this.updateCardDates(info, "resize");
                     }
-                    // ★★★ 追加ここまで ★★★
                 });
 
-                // カレンダーを描画
-                this.calendarInstance.render();
+                this.timelineInstance.render();
             },
 
             updateCardDates(info, actionType) {
@@ -1717,27 +1783,36 @@
                 const revertCallback = info.revert;
 
                 let newStartDate = event.start;
-                let newEndDate = event.end; // "end" はリサイズ後の日付（翌日0時）
+                let newEndDate = event.end;
 
-                // --- FullCalendar の日付補正 (allDay: true の場合) ---
-                if (newEndDate) {
-                    // FullCalendar の "end" は「翌日の0時」を指すため、
-                    // 1日（実際には1秒）引いて、DBに保存する「その日の終わり」に直す
-                    // (例: 22日まで伸ばすと、event.end は 23日の0時になる)
-                    newEndDate = new Date(newEndDate.getTime() - 1000); // 1秒引く
-                } else {
-                    // ★ 2. 修正: "end" が null の場合 (1日イベントのDrop時など)
-                    // 元の duration (期間) を oldEvent から計算して復元する
-                    // (user_346_fix のロジックを流用しつつ、start/endを明確にする)
-                    const oldStart = info.oldEvent.start;
-                    const oldEnd = info.oldEvent.end || oldStart; // oldEndがnullの場合も考慮
-                    const duration = oldEnd.getTime() - oldStart.getTime();
-
-                    newEndDate = new Date(newStartDate.getTime() + duration);
-                }
+                // --- FullCalendar の日付補正 ---
                 
-                // (user_345_fix の "drop" && !newEndDate のロジックは、
-                //  API側 (user_346_fix) で "end" を必ず返すようにしたので不要になった)
+                // 1. timeGrid (時間軸ビュー) の場合:
+                if (event.allDay === false) {
+                    if (!newEndDate) { newEndDate = newStartDate; } 
+                } 
+                // 2. dayGrid (月表示ビュー) の場合:
+                else if (event.allDay === true) { 
+                    
+                    if (actionType === "resize" && newEndDate === null) {
+                        // ★ [Fix] 開始日(start)をリサイズした場合 (newEndDate が null)
+                        // event._instance.range.end (元の終了日) を使う
+                        newEndDate = event._instance.range.end;
+                    }
+
+                    if (newEndDate) {
+                        // "end" (翌日0時) から 1秒引いて「その日の終わり」に直す
+                        newEndDate = new Date(newEndDate.getTime() - 1000); 
+                    } else {
+                        // (フォールバック: 1日イベントのDropなど)
+                        newEndDate = newStartDate;
+                    }
+                }
+
+                // 3. 最終フェイルセーフ
+                if (!newEndDate) {
+                    newEndDate = newStartDate;
+                }
                 // --- 補正ここまで ---
 
                 fetch(`/cards/${event.id}`, { 
@@ -1748,7 +1823,6 @@
                         "Accept": "application/json"
                     },
                     body: JSON.stringify({
-                        // toISOString() は UTC (協定世界時) に変換する
                         start_date: newStartDate.toISOString(),
                         end_date: newEndDate.toISOString()
                     })
@@ -1766,19 +1840,31 @@
                         this.selectedCardData.end_date = updatedCard.end_date;
                     }
                     
-                    // カレンダーのイベントも（念のため）APIから返ってきた値で更新
-                    const calendarEvent = this.calendarInstance.getEventById(updatedCard.id);
-                    if (calendarEvent) {
-                        // APIが返す end_date (例: 22日 23:59) を
-                        // FullCalendar用の「翌日0時」に補正
-                        let apiEndDate = new Date(updatedCard.end_date);
-                        let calendarEnd = new Date(apiEndDate.getFullYear(), apiEndDate.getMonth(), apiEndDate.getDate() + 1);
+                    // カレンダー/タイムラインのイベント更新ロジック
+                    const calendarEvent = this.calendarInstance ? this.calendarInstance.getEventById(updatedCard.id) : null;
+                    const timelineEvent = this.timelineInstance ? this.timelineInstance.getEventById(updatedCard.id) : null;
+                    
+                    // APIから返ってきた日付文字列 (UTC)
+                    let apiStartDate = new Date(updatedCard.start_date);
+                    let apiEndDate = new Date(updatedCard.end_date);
 
-                        calendarEvent.setDates(
-                            new Date(updatedCard.start_date), 
-                            calendarEnd,
-                            { allDay: true }
-                        );
+                    if (calendarEvent) {
+                        // ★★★ [FIX] タイムゾーン/日付ズレ修正 ★★★
+                        // .getUTCDate() (UTCの日付) ではなく、.getDate() (ローカルの日付) を使う
+                        
+                        // 1. ローカルの「年」「月」「日」を取得
+                        let calendarStart = new Date(apiStartDate.getFullYear(), apiStartDate.getMonth(), apiStartDate.getDate());
+                        
+                        // 2. APIが返す end は (例) 22日 23:59:59Z なので、ローカルの 22日 が取れる
+                        let calendarEnd = new Date(apiEndDate.getFullYear(), apiEndDate.getMonth(), apiEndDate.getDate() + 1); // +1 して 23 (翌日) にする
+
+                        calendarEvent.setDates(calendarStart, calendarEnd, { allDay: true });
+                    }
+                    
+                    if (timelineEvent) {
+                        // タイムラインビュー(timeGrid)用:
+                        // APIが返した正確な時刻をそのまま使う (変更なし)
+                        timelineEvent.setDates(apiStartDate, apiEndDate);
                     }
                 })
                 .catch(error => {
@@ -1792,13 +1878,36 @@
             init(); 
             watchSelectedCard();
             
-            // ★ [NEW] フィルターキーワードを監視
+            // ★ [MODIFIED] ビューモードを監視
+            $watch('viewMode', (value) => { 
+                if (value === 'calendar' && !calendarInstance) {
+                    setTimeout(() => initCalendar(), 50); 
+                }
+                
+                // ★ [NEW] タイムラインが選択されたら初期化
+                if (value === 'timeline' && !timelineInstance) {
+                    setTimeout(() => initTimeline(), 50); 
+                }
+
+                // ★ [MODIFIED] フィルターキーワードの監視 (フィルター監視も $watch('viewMode') の中に移動)
+                if (value === 'calendar' && calendarInstance) {
+                    calendarInstance.refetchEvents();
+                }
+                if (value === 'timeline' && timelineInstance) {
+                    timelineInstance.refetchEvents();
+                }
+            });
+
+            // ★ [MODIFIED] フィルターキーワードの監視
             $watch('filterKeyword', (value) => { 
-                // カレンダービューを表示中、かつ、カレンダーが初期化済みなら
+                // カレンダービューを表示中なら
                 if (viewMode === 'calendar' && calendarInstance) {
-                    // APIを再実行（events: 関数が再度呼び出される）
                     calendarInstance.refetchEvents(); 
                 } 
+                // ★ [NEW] タイムラインビューを表示中なら
+                if (viewMode === 'timeline' && timelineInstance) {
+                    timelineInstance.refetchEvents();
+                }
             });
         ">
         {{-- (1) カンバンボード専用ヘッダー (変更なし) --}}
@@ -1827,7 +1936,16 @@
                                     class="px-3 py-1 text-sm font-medium rounded-md transition-colors">
                                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
                             </button>
-                            
+                            {{-- ★ 3. [NEW] タイムラインビュー (timeGrid) --}}
+                            <button @click="viewMode = 'timeline'"
+                                    :class="{
+                                        'bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-100 shadow': viewMode === 'timeline',
+                                        'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200': viewMode !== 'timeline'
+                                    }"
+                                    class="px-3 py-1 text-sm font-medium rounded-md transition-colors">
+                                {{-- (時計のアイコン) --}}
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                            </button>
                         </div>
                     </div>
 
@@ -2141,7 +2259,13 @@
                  {{-- (TODOの <p> タグは削除) --}}
             </div>
 
-            
+            {{-- ★ [NEW] タイムラインビュー用コンテナ (timeGrid) --}}
+            <div x-show="viewMode === 'timeline'" x-cloak
+                 x-ref="timelineContainer" {{-- ★ 1. JSが参照するための名前 --}}
+                 class="w-full h-full bg-white dark:bg-gray-800 rounded-md shadow p-4"
+            >
+                {{-- (initTimeline がここに描画します) --}}
+            </div>            
 
             {{-- ★ ここから追加: カード詳細モーダル --}}
             <x-card-detail-modal />

@@ -13,13 +13,14 @@ window.flatpickr = flatpickr;
 import { Calendar } from '@fullcalendar/core';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import interactionPlugin from '@fullcalendar/interaction';
+import timeGridPlugin from '@fullcalendar/timegrid';
 
 // グローバルスコープ（window）に登録
 window.FullCalendar = {
     Calendar: Calendar,
     dayGridPlugin: dayGridPlugin,
     interactionPlugin: interactionPlugin,
-    
+    timeGridPlugin: timeGridPlugin
 };
 
 // --- 2. 最後に Alpine を起動 ---

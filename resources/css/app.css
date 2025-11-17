@@ -1,11 +1,8 @@
+@import 'flatpickr/dist/flatpickr.min.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-@import 'flatpickr/dist/flatpickr.min.css';
-
-@import '@fullcalendar/core/main.css';
-@import '@fullcalendar/daygrid/main.css';
 
 
 /* ★★★ ここから FullCalendar ダークモード対応 ★★★ */

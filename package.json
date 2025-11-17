@@ -25,6 +25,7 @@
         "@fullcalendar/interaction": "^6.1.19",
         "@fullcalendar/resource-common": "^5.11.5",
         "@fullcalendar/resource-timeline": "^6.1.19",
+        "@fullcalendar/timegrid": "^6.1.19",
         "@fullcalendar/timeline": "^6.1.19",
         "flatpickr": "^4.6.13"
     }
