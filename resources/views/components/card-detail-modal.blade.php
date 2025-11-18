@@ -1,7 +1,17 @@
 <div
-    x-data="{ zoomedImage: null }" {{-- ★ 追加: ズーム画像のURLを保持する変数 --}}
+    x-data="{ 
+        zoomedImage: null,
+        isPopoverOpen: false 
+        }" {{-- ★ 追加: ズーム画像のURLを保持する変数 --}}
+    {{-- ★ 追加: 子からのイベントを受け取ってフラグを更新 --}}
+    @popover-open.window="isPopoverOpen = true"
+    @popover-close.window="isPopoverOpen = false"
     x-show="selectedCardId !== null"
-    @keydown.escape.window="if(zoomedImage) { zoomedImage = null } else { selectedCardId = null; selectedCardData = null }" {{-- ★ 修正: ESCキーでズームを閉じる優先度を設定 --}}
+    @keydown.escape.window="
+    if (isPopoverOpen) return;
+    if(zoomedImage) { zoomedImage = null } 
+    else { selectedCardId = null; selectedCardData = null }
+    " {{-- ★ 修正: ESCキーでズームを閉じる優先度を設定 --}}
     x-cloak
     class="fixed inset-0 z-50 flex items-center justify-center p-4 md:p-8"
 >
@@ -177,6 +187,8 @@
                                     search: "" 
                                 }' 
                                 class="relative w-auto"
+                                x-init="$watch('open', value => $dispatch(value ? 'popover-open' : 'popover-close'))"
+                                @keydown.escape.window="if(open) open = false"
                             >
                                 {{-- 1. ボタン本体 --}}
                                 <button @click="open = !open" 
@@ -243,7 +255,11 @@
                                 </div>
                             </div>
                             {{-- Labels --}}
-                            <div x-data='{ open: false }' class="relative w-auto">
+                            <div x-data='{ open: false }' 
+                                class="relative w-auto"
+                                x-init="$watch('open', value => $dispatch(value ? 'popover-open' : 'popover-close'))"
+                                @keydown.escape.window="if(open) open = false"
+                                >
                                 {{-- 1. ボタン本体 --}}
                                 <button @click="open = !open" 
                                         type="button" 
@@ -402,6 +418,8 @@
                                     checklistTitle: "Checklist w-auto" 
                                 }' 
                                 class="relative w-auto"
+                                x-init="$watch('open', value => $dispatch(value ? 'popover-open' : 'popover-close'))"
+                                @keydown.escape.window="if(open) open = false"
                             >
                                 {{-- 1. ボタン本体 --}}
                                 <button @click="open = !open; if(open) { $nextTick(() => $nextTick(() => { if ($refs.checklistTitleInput) { $refs.checklistTitleInput.focus(); $refs.checklistTitleInput.select(); } })) }" 
@@ -478,7 +496,11 @@
                                                 // static: true, // ★ 削除
                                                 // appendTo: ... // ★ 削除
                                                 onOpen: () => { this.isPickerOpen = true; },  // ★ 2. 開いたらフラグを立てる
-                                                onClose: () => { this.isPickerOpen = false; }, // ★ 2. 閉じたらフラグを下ろす
+                                                onClose: () => { 
+                                                    setTimeout(() => {
+                                                        this.isPickerOpen = false; 
+                                                    }, 50); // 50ミリ秒待ってからフラグを下ろす
+                                                },
                                                 onChange: (selectedDates) => {
                                                     this.localStartDate = selectedDates[0] ? window.flatpickr.formatDate(selectedDates[0], "Y-m-d H:i") : null;
                                                 }
@@ -494,7 +516,11 @@
                                                 // static: true, // ★ 削除
                                                 // appendTo: ... // ★ 削除
                                                 onOpen: () => { this.isPickerOpen = true; },  // ★ 2. 開いたらフラグを立てる
-                                                onClose: () => { this.isPickerOpen = false; }, // ★ 2. 閉じたらフラグを下ろす
+                                                onClose: () => { 
+                                                    setTimeout(() => {
+                                                        this.isPickerOpen = false; 
+                                                    }, 50); 
+                                                },
                                                 onChange: (selectedDates) => {
                                                     this.localEndDate = selectedDates[0] ? window.flatpickr.formatDate(selectedDates[0], "Y-m-d H:i") : null;
                                                     this.calculateReminderValue(); 
@@ -525,6 +551,18 @@
                                     }
                                 }' 
                                 class="relative w-auto"
+                                {{-- ★ 追加: open の状態変化を親に通知 --}}
+                                x-init="$watch('open', value => $dispatch(value ? 'popover-open' : 'popover-close'))"
+                                {{-- ★ 追加: 自分自身を閉じるESC処理 --}}
+                                @keydown.escape.window="
+                                    if (open) {
+                                        // カレンダーが開いていなければ閉じる
+                                        if (!isPickerOpen) {
+                                            open = false;
+                                        }
+                                        // (カレンダーが開いていればFlatpickrが閉じるので何もしない)
+                                    }
+                                "
                             >
                                 {{-- 1. ボタン本体 (変更なし) --}}
                                 <button @click="open = !open; if(open) { $nextTick(() => initPickers()) }" 
