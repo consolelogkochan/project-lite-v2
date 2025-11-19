@@ -48,6 +48,11 @@
             addingList: false,
             showInviteModal: false, // 招待モーダルの表示状態
             filterKeyword: "", // ★ 1. フィルターのキーワードを保持する変数を追加
+            filterLabels: "", 
+            filterPeriod: "", 
+            filterMember: "", 
+            filterChecklist: "", 
+            filterCompleted: "",
             viewMode: "board",
             calendarInstance: null,
             timelineInstance: null, // ★ 1. [NEW] タイムラインのインスタンスを保持
@@ -76,6 +81,8 @@
                     })
                     .catch(error => console.error("Error fetching members:", error));
                 // ★ 追加ここまで
+                // ★★★ [NEW] デバッグ用のグローバル変数を設定 ★★★
+                window.boardData = this;
             },
 
             // ★ ここから追加: selectedCardId を監視
@@ -1581,63 +1588,131 @@
 
             get filteredLists() {
                 const keyword = this.filterKeyword.trim();
-                // キーワードが空なら、全てのリストをそのまま返す
-                if (keyword === "") {
-                    return this.lists;
-                }
+                const normalizedKeyword = keyword.normalize("NFKC").toLowerCase();
 
-                // キーワードを正規化 (NFKC) し、小文字に
-                // (例: "Ｔａｓｋ" や "ﾀｽｸ" を "task" や "タスク" に統一)
-                const normalizedKeyword = keyword.normalize("NFKC").toLowerCase(); // ★ "NFKC"
+                // ★★★ 1. [FIX] Date Helper の定義をメソッド内部に移動 ★★★
+                const jsNow = new Date(); 
+                const jsTomorrow = new Date(jsNow.getTime() + 24 * 60 * 60 * 1000);
+                const jsEndOfWeek = (() => { // 今週末を計算 (土曜の終わり)
+                    const d = new Date();
+                    d.setDate(d.getDate() + (6 - d.getDay()));
+                    d.setHours(23, 59, 59, 999);
+                    return d;
+                })(); 
+                const jsEndOfMonth = (() => { // 今月末を計算
+                    const d = new Date();
+                    d.setMonth(d.getMonth() + 1, 0); 
+                    d.setHours(23, 59, 59, 999);
+                    return d;
+                })();
+                // ★★★ 修正ここまで ★★★
+
+
+                // フィルターの変数を取得 (既存ロジック)
+                const labels = this.filterLabels;
+                const period = this.filterPeriod;
+                const member = this.filterMember;
+                const checklist = this.filterChecklist;
+                const completed = this.filterCompleted;
                 
-                // 1. 各リスト内の「カード」をキーワードで絞り込む
+                // PHPからBladeで埋め込まれたAuth::id()を文字列として取得
+                const currentUserId = String({{ Auth::id() }});
+                
+                
+                const cardMatches = (card) => {
+                    
+                    // --- 1-1. キーワード検索 (変更なし) ---
+                    let matchesKeyword = (keyword === "");
+                    if (!matchesKeyword) {
+                        const cardContent = [
+                            card.title,
+                            card.description,
+                            ...((card.comments || []).map(c => c.content)),
+                            ...((card.attachments || []).map(a => a.file_name)),
+                            ...((card.checklists || []).flatMap(c => [c.title, ...((c.items || []).map(i => i.content))])),
+                        ].join(" ").normalize("NFKC").toLowerCase();
+
+                        if (cardContent.includes(normalizedKeyword)) {
+                            matchesKeyword = true;
+                        }
+                    }
+
+                    // --- 1-2. 静的フィルターチェック (AND 条件で組み合わせる) ---
+                    let matchesStatic = true;
+                    const assigned = card.assigned_users || [];
+                    const dueDate = card.end_date ? new Date(card.end_date) : null;
+
+                    // ★ 修正: assignedUsers ではなく assigned を使う
+                    const assignmentUserIds = assigned.map(u => String(u.id));
+
+
+                    // a. Completion Status
+                    if (completed === "true") {
+                        matchesStatic = matchesStatic && card.is_completed;
+                    } else if (completed === "false") {
+                        matchesStatic = matchesStatic && !card.is_completed;
+                    }
+                    
+                    // b. Member (★ FIX: Null 安全と Type Coercion)
+                    if (member === "mine") {
+                        // FIX: currentUserId (String) が assignmentUserIds (Array of String) に含まれているかチェック
+                        matchesStatic = matchesStatic && assignmentUserIds.includes(currentUserId);
+                    } else if (member === "none") {
+                        // FIX: 割り当てられたIDの配列の長さがゼロであることを確認
+                        matchesStatic = matchesStatic && assigned.length === 0; // ← assigned を参照
+                    }
+                    
+                    // c. Labels / d. Checklist (変更なし)
+                    if (labels === "has") {
+                        matchesStatic = matchesStatic && (card.labels && card.labels.length > 0);
+                    } else if (labels === "none") {
+                        matchesStatic = matchesStatic && (card.labels && card.labels.length === 0);
+                    }
+                    if (checklist === "has") {
+                        matchesStatic = matchesStatic && (card.checklists && card.checklists.length > 0);
+                    } else if (checklist === "none") {
+                        matchesStatic = matchesStatic && (card.checklists && card.checklists.length === 0);
+                    }
+                    
+                    // e. Period (★ FIX: 厳密な null/date チェックと今週/今月のロジック追加)
+                    if (period !== "") {
+                        if (period === "none_due") {
+                            matchesStatic = matchesStatic && dueDate === null;
+                        } else if (dueDate === null) {
+                            matchesStatic = false; // 期限必須のフィルターで、期限がない場合は強制的に除外
+                        } else {
+                            // 期限がある場合のチェック
+                            if (period === "overdue") {
+                                matchesStatic = matchesStatic && dueDate < jsNow;
+                            } else if (period === "tomorrow") {
+                                // FIX: 明日までの期間
+                                matchesStatic = matchesStatic && dueDate.toDateString() === jsTomorrow.toDateString();
+                            } else if (period === "this_week") {
+                                // FIX: 今週の終わりまで (現在から今週末まで)
+                                matchesStatic = matchesStatic && dueDate >= jsNow && dueDate <= jsEndOfWeek;
+                            } else if (period === "this_month") {
+                                // FIX: 今月の終わりまで (現在から今月末まで)
+                                matchesStatic = matchesStatic && dueDate >= jsNow && dueDate <= jsEndOfMonth;
+                            }
+                        }
+                    }
+                    
+                    // 最終判定
+                    return matchesKeyword && matchesStatic;
+                };
+
+                // ★★★ 2. フィルタリングとリストのマッピング (変更なし) ★★★
                 const listsWithFilteredCards = this.lists.map(list => {
-                    
-                    const matchingCards = list.cards.filter(card => {
-                        
-                        // 1. カードタイトルのチェック (既存)
-                        if (card.title.normalize("NFKC").toLowerCase().includes(normalizedKeyword)) { // ★ "NFKC"
-                            return true;
-                        }
-
-                        // 2. [NEW] カード説明文のチェック
-                        if (card.description && card.description.normalize("NFKC").toLowerCase().includes(normalizedKeyword)) { // ★ "NFKC"
-                            return true;
-                        }
-
-                        // 3. [NEW] コメント内容のチェック
-                        if (card.comments && card.comments.some(comment => 
-                            comment.content.normalize("NFKC").toLowerCase().includes(normalizedKeyword) // ★ "NFKC"
-                        )) {
-                            return true;
-                        }
-
-                        // 4. [NEW] 添付ファイル名のチェック
-                        if (card.attachments && card.attachments.some(attachment => 
-                            attachment.file_name.normalize("NFKC").toLowerCase().includes(normalizedKeyword) // ★ "NFKC"
-                        )) {
-                            return true;
-                        }
-
-                        // 5. [NEW] チェックリスト (タイトルとアイテム) のチェック
-                        if (card.checklists && card.checklists.some(checklist => 
-                            checklist.title.normalize("NFKC").toLowerCase().includes(normalizedKeyword) || // ★ "NFKC"
-                            checklist.items.some(item => item.content.normalize("NFKC").toLowerCase().includes(normalizedKeyword)) // ★ "NFKC"
-                        )) {
-                            return true;
-                        }
-
-                        // すべて一致しなかった場合
-                        return false;
-                    });
-                    
+                    const matchingCards = list.cards.filter(card => 
+                        cardMatches(card)
+                    );
                     return { ...list, cards: matchingCards };
                 });
 
-                // 2. 「リスト」自体を絞り込む (既存)
+                // 3. リスト自体を絞り込む
                 return listsWithFilteredCards.filter(list => 
-                    list.title.normalize("NFKC").toLowerCase().includes(normalizedKeyword) || // ★ "NFKC"
-                    list.cards.length > 0 // (または、カードが1枚でも残っている)
+                    list.title.normalize("NFKC").toLowerCase().includes(normalizedKeyword) || 
+                    list.cards.length > 0
                 );
             },
 
@@ -1664,17 +1739,31 @@
                     events: (fetchInfo, successCallback, failureCallback) => {
                         const url = new URL("{{ route("boards.calendarEvents", $board) }}");
                         
-                        const keyword = this.filterKeyword.trim();
-                        if (keyword !== "") {
-                            url.searchParams.append("q", keyword);
+                        // ★ 1. [NEW] 全てのフィルターを URL に追加
+                        const filters = {
+                            q: this.filterKeyword.trim(),
+                            filterLabels: this.filterLabels,
+                            filterPeriod: this.filterPeriod,
+                            filterMember: this.filterMember,
+                            filterChecklist: this.filterChecklist,
+                            filterCompleted: this.filterCompleted
+                        };
+                        
+                        for (const key in filters) {
+                            const value = filters[key];
+                            // 値が存在し、かつ空文字 (全件表示) ではない場合のみ追加
+                            if (value && value !== "") { 
+                                url.searchParams.append(key, value);
+                            }
                         }
                         
-                        url.searchParams.append("view", "calendar");
-                        
+                        // ★ 2. [FIX] view パラメータを追加
+                        url.searchParams.append("view", (this.viewMode === "board" || this.viewMode === "calendar") ? "calendar" : "timeline");
+
                         fetch(url)
                             .then(response => {
                                 if (!response.ok) {
-                                    throw new Error("Failed to load calendar events.");
+                                    throw new Error("Failed to load events. API returned error.");
                                 }
                                 return response.json();
                             })
@@ -1733,21 +1822,34 @@
                         right: "timeGridWeek,timeGridDay"
                     },
 
-                    // ★ 1. [FIX] "events" をオブジェクトから関数に変更 (フィルター対応)
                     events: (fetchInfo, successCallback, failureCallback) => {
                         const url = new URL("{{ route("boards.calendarEvents", $board) }}");
                         
-                        const keyword = this.filterKeyword.trim();
-                        if (keyword !== "") {
-                            url.searchParams.append("q", keyword);
+                        // ★ 1. [NEW] 全てのフィルターを URL に追加
+                        const filters = {
+                            q: this.filterKeyword.trim(),
+                            filterLabels: this.filterLabels,
+                            filterPeriod: this.filterPeriod,
+                            filterMember: this.filterMember,
+                            filterChecklist: this.filterChecklist,
+                            filterCompleted: this.filterCompleted
+                        };
+                        
+                        for (const key in filters) {
+                            const value = filters[key];
+                            // 値が存在し、かつ空文字 (全件表示) ではない場合のみ追加
+                            if (value && value !== "") { 
+                                url.searchParams.append(key, value);
+                            }
                         }
                         
-                        url.searchParams.append("view", "timeline"); // "view" を使用
-                        
+                        // ★ 2. [FIX] view パラメータを追加
+                        url.searchParams.append("view", (this.viewMode === "board" || this.viewMode === "calendar") ? "calendar" : "timeline");
+
                         fetch(url)
                             .then(response => {
                                 if (!response.ok) {
-                                    throw new Error("Failed to load timeline events.");
+                                    throw new Error("Failed to load events. API returned error.");
                                 }
                                 return response.json();
                             })
@@ -1898,13 +2000,25 @@
                 }
             });
 
-            // ★ [MODIFIED] フィルターキーワードの監視
-            $watch('filterKeyword', (value) => { 
-                // カレンダービューを表示中なら
+            // ★ [REPLACED] 全てのフィルターの変更を監視し、即時反映させる
+            $watch('[filterKeyword, filterLabels, filterPeriod, filterMember, filterChecklist, filterCompleted]', (value) => {
+                
+                // カンバンボードのカードは、get filteredLists() 経由でリアクティブに更新されます。
+                
+                // カレンダー/タイムラインのデータ同期のみを行う（API呼び出し）
                 if (viewMode === 'calendar' && calendarInstance) {
                     calendarInstance.refetchEvents(); 
                 } 
-                // ★ [NEW] タイムラインビューを表示中なら
+                if (viewMode === 'timeline' && timelineInstance) {
+                    timelineInstance.refetchEvents();
+                }
+            });
+
+            // ★ [MODIFIED] 既存のキーワード監視は残す
+            $watch('filterKeyword', (value) => { 
+                if (viewMode === 'calendar' && calendarInstance) {
+                    calendarInstance.refetchEvents(); 
+                } 
                 if (viewMode === 'timeline' && timelineInstance) {
                     timelineInstance.refetchEvents();
                 }
@@ -2001,7 +2115,8 @@
                                 @click.away="open = false"
                                 x-transition
                                 x-cloak
-                                class="absolute z-20 right-0 mt-1 w-64 bg-white dark:bg-gray-900 rounded-md shadow-lg border border-gray-200 dark:border-gray-700"
+                                class="absolute z-20 right-0 mt-1 w-64 bg-white dark:bg-gray-900 rounded-md shadow-lg border border-gray-200 dark:border-gray-700
+                                       max-h-[80vh] overflow-y-auto"
                             >
                                 <div class="p-4">
                                     <h4 class="text-center text-sm font-medium text-gray-500 dark:text-gray-400 mb-3">Filter Board</h4>
@@ -2018,6 +2133,119 @@
                                             class="block w-full text-sm rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-blue-500 focus:border-blue-500"
                                             placeholder="Filter by keyword...">
                                     </div>
+
+                                    {{-- ★★★ ここから新しいフィルタオプションの追加 (英語化済み) ★★★ --}}
+        
+                                    <div class="space-y-4">
+                                        {{-- 1. Labels filter --}}
+                                        <div class="border-b border-gray-200 dark:border-gray-700 pb-3">
+                                            <p class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase mb-2">Labels</p>
+                                            <div class="space-y-1">
+                                                <label class="flex items-center text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+                                                    <input type="radio" name="filterLabels" value="" x-model="filterLabels" class="form-radio h-4 w-4 text-indigo-600 dark:bg-gray-800 dark:border-gray-600">
+                                                    <span class="ms-2">All</span>
+                                                </label>
+                                                <label class="flex items-center text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+                                                    <input type="radio" name="filterLabels" value="has" x-model="filterLabels" class="form-radio h-4 w-4 text-indigo-600 dark:bg-gray-800 dark:border-gray-600">
+                                                    <span class="ms-2">Has Labels</span>
+                                                </label>
+                                                <label class="flex items-center text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+                                                    <input type="radio" name="filterLabels" value="none" x-model="filterLabels" class="form-radio h-4 w-4 text-indigo-600 dark:bg-gray-800 dark:border-gray-600">
+                                                    <span class="ms-2">No Labels</span>
+                                                </label>
+                                            </div>
+                                        </div>
+
+                                        {{-- 2. Due Date filter --}}
+                                        <div class="border-b border-gray-200 dark:border-gray-700 pb-3">
+                                            <p class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase mb-2">Due Date</p>
+                                            <div class="space-y-1">
+                                                <label class="flex items-center text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+                                                    <input type="radio" name="filterPeriod" value="" x-model="filterPeriod" class="form-radio h-4 w-4 text-indigo-600 dark:bg-gray-800 dark:border-gray-600">
+                                                    <span class="ms-2">All</span>
+                                                </label>
+                                                <label class="flex items-center text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+                                                    <input type="radio" name="filterPeriod" value="none_due" x-model="filterPeriod" class="form-radio h-4 w-4 text-indigo-600 dark:bg-gray-800 dark:border-gray-600">
+                                                    <span class="ms-2">No Due Date</span>
+                                                </label>
+                                                <label class="flex items-center text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+                                                    <input type="radio" name="filterPeriod" value="overdue" x-model="filterPeriod" class="form-radio h-4 w-4 text-red-600 dark:bg-gray-800 dark:border-gray-600">
+                                                    <span class="ms-2">Overdue</span>
+                                                </label>
+                                                <label class="flex items-center text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+                                                    <input type="radio" name="filterPeriod" value="tomorrow" x-model="filterPeriod" class="form-radio h-4 w-4 text-yellow-600 dark:bg-gray-800 dark:border-gray-600">
+                                                    <span class="ms-2">Due Tomorrow</span>
+                                                </label>
+                                                <label class="flex items-center text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+                                                    <input type="radio" name="filterPeriod" value="this_week" x-model="filterPeriod" class="form-radio h-4 w-4 text-yellow-600 dark:bg-gray-800 dark:border-gray-600">
+                                                    <span class="ms-2">Due This Week</span>
+                                                </label>
+                                                <label class="flex items-center text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+                                                    <input type="radio" name="filterPeriod" value="this_month" x-model="filterPeriod" class="form-radio h-4 w-4 text-yellow-600 dark:bg-gray-800 dark:border-gray-600">
+                                                    <span class="ms-2">Due This Month</span>
+                                                </label>
+                                            </div>
+                                        </div>
+                                        
+                                        {{-- 3. Member filter --}}
+                                        <div class="border-b border-gray-200 dark:border-gray-700 pb-3">
+                                            <p class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase mb-2">Member</p>
+                                            <div class="space-y-1">
+                                                <label class="flex items-center text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+                                                    <input type="radio" name="filterMember" value="" x-model="filterMember" class="form-radio h-4 w-4 text-indigo-600 dark:bg-gray-800 dark:border-gray-600">
+                                                    <span class="ms-2">All</span>
+                                                </label>
+                                                <label class="flex items-center text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+                                                    <input type="radio" name="filterMember" value="mine" x-model="filterMember" class="form-radio h-4 w-4 text-indigo-600 dark:bg-gray-800 dark:border-gray-600">
+                                                    <span class="ms-2">Assigned to Me</span>
+                                                </label>
+                                                <label class="flex items-center text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+                                                    <input type="radio" name="filterMember" value="none" x-model="filterMember" class="form-radio h-4 w-4 text-indigo-600 dark:bg-gray-800 dark:border-gray-600">
+                                                    <span class="ms-2">No Assignee</span>
+                                                </label>
+                                            </div>
+                                        </div>
+                                        
+                                        {{-- 4. Checklist filter --}}
+                                        <div class="border-b border-gray-200 dark:border-gray-700 pb-3">
+                                            <p class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase mb-2">Checklist</p>
+                                            <div class="space-y-1">
+                                                <label class="flex items-center text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+                                                    <input type="radio" name="filterChecklist" value="" x-model="filterChecklist" class="form-radio h-4 w-4 text-indigo-600 dark:bg-gray-800 dark:border-gray-600">
+                                                    <span class="ms-2">All</span>
+                                                </label>
+                                                <label class="flex items-center text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+                                                    <input type="radio" name="filterChecklist" value="has" x-model="filterChecklist" class="form-radio h-4 w-4 text-indigo-600 dark:bg-gray-800 dark:border-gray-600">
+                                                    <span class="ms-2">Has Checklist</span>
+                                                </label>
+                                                <label class="flex items-center text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+                                                    <input type="radio" name="filterChecklist" value="none" x-model="filterChecklist" class="form-radio h-4 w-4 text-indigo-600 dark:bg-gray-800 dark:border-gray-600">
+                                                    <span class="ms-2">No Checklist</span>
+                                                </label>
+                                            </div>
+                                        </div>
+                                        
+                                        {{-- 5. Completion Status filter --}}
+                                        <div class="pb-1">
+                                            <p class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase mb-2">Completion Status</p>
+                                            <div class="space-y-1">
+                                                <label class="flex items-center text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+                                                    <input type="radio" name="filterCompleted" value="" x-model="filterCompleted" class="form-radio h-4 w-4 text-indigo-600 dark:bg-gray-800 dark:border-gray-600">
+                                                    <span class="ms-2">All</span>
+                                                </label>
+                                                <label class="flex items-center text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+                                                    <input type="radio" name="filterCompleted" value="true" x-model="filterCompleted" class="form-radio h-4 w-4 text-green-600 dark:bg-gray-800 dark:border-gray-600">
+                                                    <span class="ms-2">Completed</span>
+                                                </label>
+                                                <label class="flex items-center text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+                                                    <input type="radio" name="filterCompleted" value="false" x-model="filterCompleted" class="form-radio h-4 w-4 text-indigo-600 dark:bg-gray-800 dark:border-gray-600">
+                                                    <span class="ms-2">Incomplete</span>
+                                                </label>
+                                            </div>
+                                        </div>
+
+                                    </div>
+                                    {{-- ★★★ 新しいフィルタオプションの追加ここまで ★★★ --}}
                                 </div>
                             </div>
                         </div>

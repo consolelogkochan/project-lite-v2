@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Gate;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use App\Models\User;
 use App\Models\Card;
+use Illuminate\Database\Eloquent\Builder;
 
 
 class BoardController extends Controller
@@ -56,24 +57,96 @@ class BoardController extends Controller
     /**
      * 特定のボードを表示する
      */
-    public function show(Board $board): View
+    public function show(Request $request, Board $board): View
     {
-        // 1. 認可(Policy)チェック
         $this->authorize('view', $board);
+        $board->load('users');
 
-        // ★ 2. 修正: シンプルな Eager Loading に戻す
-        $board->load('users'); // ヘッダーのアバター用
+        $currentUserId = Auth::id(); // 担当者フィルター用
 
-        // 3. リストと関連データを Eager Loading
+        // 3. リストと関連データを Eager Loading (カードにフィルターを適用)
         $lists = $board->lists()
-                       ->with('cards', 'cards.labels', 'cards.checklists.items', 'cards.attachments.user', 'cards.comments') 
+                       ->with([
+                            // ★★★ 1. Eager Loading とフィルタリングを統合 ★★★
+                            'cards' => function ($query) use ($request, $currentUserId) {
+                                
+                                // ★ 1. NEW FIX: 必要な全てのネストされたリレーションをここでロード
+                                $query->with('assignedUsers', 'labels', 'checklists.items', 'attachments.user', 'comments');
+
+                                // フィルターパラメータの取得
+                                $labelsFilter = $request->input("filterLabels");
+                                $periodFilter = $request->input("filterPeriod");
+                                $memberFilter = $request->input("filterMember");
+                                $checklistFilter = $request->input("filterChecklist");
+                                $completedFilter = $request->input("filterCompleted");
+                                $keyword = $request->input("q", "");
+
+                                // 3-1. 完了ステータス (Completion Status)
+                                if ($completedFilter === "true") {
+                                    $query->whereCompleted();
+                                } elseif ($completedFilter === "false") {
+                                    $query->whereIncomplete();
+                                }
+
+                                // 3-2. メンバー (Member)
+                                if ($memberFilter === "mine") {
+                                    $query->whereAssignedToMe($currentUserId);
+                                } elseif ($memberFilter === "none") {
+                                    $query->whereNoAssignee();
+                                }
+
+                                // 3-3. ラベル (Label)
+                                if ($labelsFilter === "has") {
+                                    $query->whereHasLabels();
+                                } elseif ($labelsFilter === "none") {
+                                    $query->whereDoesntHaveLabels();
+                                }
+
+                                // 3-4. チェックリスト (Checklist)
+                                if ($checklistFilter === "has") {
+                                    $query->whereHasChecklists(); 
+                                } elseif ($checklistFilter === "none") {
+                                    $query->whereDoesntHaveChecklists();
+                                }
+
+                                // 3-5. 期間 (Period / Due Date)
+                                if ($periodFilter === "none_due") {
+                                    $query->whereNoDueDate();
+                                } elseif ($periodFilter === "overdue") {
+                                    $query->whereOverdue();
+                                } elseif ($periodFilter === "tomorrow") {
+                                    $query->whereDueTomorrow();
+                                } elseif ($periodFilter === "this_week") {
+                                    $query->whereDueThisWeek();
+                                } elseif ($periodFilter === "this_month") {
+                                    $query->whereDueThisMonth();
+                                }
+
+                                // 3-6. キーワードフィルター
+                                if (!empty($keyword)) {
+                                    $query->where(function ($q) use ($keyword) {
+                                        $q->where("title", "like", "%{$keyword}%")
+                                          ->orWhere("description", "like", "%{$keyword}%")
+                                          ->orWhereHas("comments", fn($com) => $com->where("content", "like", "%{$keyword}%"))
+                                          ->orWhereHas("attachments", fn($att) => $att->where("file_name", "like", "%{$keyword}%"))
+                                          ->orWhereHas("checklists", function ($chk) use ($keyword) {
+                                              $chk->where("title", "like", "%{$keyword}%")
+                                                  ->orWhereHas("items", fn($itm) => $itm->where("content", "like", "%{$keyword}%"));
+                                          });
+                                    });
+                                }
+                                
+                                // カンバンボードではカードの order でソートする
+                                $query->orderBy('order');
+                            }
+                            // ★ 2. 外部の Eager Load 指定は全て削除
+                       ])
                        ->orderBy('order')->get();
         
         // 4. ビューに渡す
         return view('boards.show', [
-            'board' => $board, // ★ 'users' リレーションを含んだ $board
+            'board' => $board, 
             'lists' => $lists,
-            // 'members' => $members, // ★ $members 変数は不要になった
         ]);
     }
 
@@ -108,13 +181,64 @@ class BoardController extends Controller
         // 認可チェック
         $this->authorize("view", $board);
 
-        // キーワードフィルター
+        // 1. フロントエンドから送信されたすべてのフィルターパラメータを取得
+        $labelsFilter = $request->input("filterLabels");
+        $periodFilter = $request->input("filterPeriod");
+        $memberFilter = $request->input("filterMember");
+        $checklistFilter = $request->input("filterChecklist");
+        $completedFilter = $request->input("filterCompleted");
         $keyword = $request->input("q", "");
+
+        // 2. ベースクエリの構築
         $listIds = $board->lists()->pluck("id");
-        
+        // 期限が設定されているカードを対象とする
         $cardsQuery = Card::whereIn("board_list_id", $listIds)
                           ->whereNotNull("end_date"); 
 
+        // 3. ★★★ NEW: 新しいフィルターロジックの適用 ★★★
+
+        // 3-1. 完了ステータス (Completion Status)
+        if ($completedFilter === "true") {
+            $cardsQuery->whereCompleted();
+        } elseif ($completedFilter === "false") {
+            $cardsQuery->whereIncomplete();
+        }
+
+        // 3-2. メンバー (Member)
+        if ($memberFilter === "mine") {
+            $cardsQuery->whereAssignedToMe(Auth::id());
+        } elseif ($memberFilter === "none") {
+            $cardsQuery->whereNoAssignee();
+        }
+
+        // 3-3. ラベル (Label)
+        if ($labelsFilter === "has") {
+            $cardsQuery->whereHasLabels();
+        } elseif ($labelsFilter === "none") {
+            $cardsQuery->whereDoesntHaveLabels();
+        }
+
+        // 3-4. チェックリスト (Checklist)
+        if ($checklistFilter === "has") {
+            $cardsQuery->whereHasChecklists();
+        } elseif ($checklistFilter === "none") {
+            $cardsQuery->whereDoesntHaveChecklists();
+        }
+
+        // 3-5. 期間 (Period / Due Date)
+        if ($periodFilter === "none_due") {
+            $cardsQuery->whereNoDueDate();
+        } elseif ($periodFilter === "overdue") {
+            $cardsQuery->whereOverdue();
+        } elseif ($periodFilter === "tomorrow") {
+            $cardsQuery->whereDueTomorrow();
+        } elseif ($periodFilter === "this_week") {
+            $cardsQuery->whereDueThisWeek();
+        } elseif ($periodFilter === "this_month") {
+            $cardsQuery->whereDueThisMonth();
+        }
+        
+        // 4. ★★★ 既存のキーワードフィルターロジックの適用 ★★★
         if (!empty($keyword)) {
             $cardsQuery->where(function ($query) use ($keyword) {
                 $query->where("title", "like", "%{$keyword}%")
@@ -128,8 +252,10 @@ class BoardController extends Controller
             });
         }
         
-        $cards = $cardsQuery->get();
-
+        // 5. ソートとデータ取得 (user_399_fix の修正)
+        $cards = $cardsQuery->orderBy("end_date")->get();
+        
+        // 6. FullCalendar 形式にマッピング
         $viewType = $request->input("view", "calendar");
 
         // FullCalendar 形式にマッピング
@@ -159,7 +285,6 @@ class BoardController extends Controller
                 // --- タイムラインビュー (timeGrid) 用 ---
                 // (toISOString() は元々 UTC を返すので変換不要)
                 $startStr = $start->toISOString();
-                
                 $isAllDay = $start->isStartOfDay() && $end->isStartOfDay();
                 $displayEnd = $isAllDay ? $end->copy()->addDay() : $end;
                 $endStr = $displayEnd->toISOString();
