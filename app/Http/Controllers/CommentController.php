@@ -4,30 +4,27 @@ namespace App\Http\Controllers;
 
 use App\Models\Card;
 use App\Models\Comment;
-use Illuminate\Http\Request;
+// use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Validator;
+// use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Gate;
 use App\Events\CommentPosted;
+
+// ★ 追加
+use App\Http\Requests\CommentStoreRequest;
+use App\Http\Requests\CommentUpdateRequest;
 
 class CommentController extends Controller
 {
     /**
      * 新しいコメントを保存する (API)
      */
-    public function store(Request $request, Card $card)
+    public function store(CommentStoreRequest $request, Card $card)
     {
         // TODO: ここに「このカードにコメントする権限があるか」の
         // 認可(Policy)チェックを将来追加する
 
-        // バリデーション
-        $validator = Validator::make($request->all(), [
-            'content' => 'required|string',
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json($validator->errors(), 422);
-        }
+        // ★ Validator ブロックを削除
 
         // コメントを作成
         $comment = $card->comments()->create([
@@ -49,7 +46,7 @@ class CommentController extends Controller
      * コメントを更新する (API)
      * ★ このメソッドを追加
      */
-    public function update(Request $request, Comment $comment)
+    public function update(CommentUpdateRequest $request, Comment $comment)
     {
         // 認可(Policy)チェック: 認証済みユーザーがこのコメントを更新できるか
         // (自分自身のコメントであるか)
@@ -58,14 +55,7 @@ class CommentController extends Controller
         }
         // (将来的に Gate::authorize('update', $comment); に置き換える)
 
-        // バリデーション
-        $validator = Validator::make($request->all(), [
-            'content' => 'required|string',
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json($validator->errors(), 422);
-        }
+        // ★ Validator ブロックを削除
 
         // コメントを更新
         $comment->update([

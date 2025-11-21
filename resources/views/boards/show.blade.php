@@ -358,11 +358,20 @@
 
             // ★ ここから追加 (文字列をダブルクォートに変更)
             submitNewCard(list) {
+                // エラーをリセット
+                this.newCardForm.error = null;
+                // 1. クライアントサイドでの空チェック
                 if (this.newCardForm.title.trim() === "") {
-                    // タイトルが空ならフォームを閉じるだけ
-                    this.newCardForm.listId = null;
-                    this.newCardForm.title = "";
-                    return;
+                    // ★ 修正: フォームを閉じずに、エラーメッセージを表示する
+                    this.newCardForm.error = "The title field is required.";
+                    
+                    // フォームの入力欄にフォーカスを戻す（UX向上）
+                    this.$nextTick(() => {
+                        if (this.$refs["newCardTitleInput_" + list.id]) {
+                            this.$refs["newCardTitleInput_" + list.id].focus();
+                        }
+                    });
+                    return; // 送信せずに終了
                 }
 
                 fetch(`/lists/${list.id}/cards`, {
@@ -376,29 +385,38 @@
                         title: this.newCardForm.title
                     })
                 })
-                .then(response => {
-                    if (response.status === 422) { // バリデーションエラー
-                        alert("Card title is required or too long."); // "..." に変更
-                        throw new Error("Validation failed"); // "..." に変更
+                .then(async response => {
+                    // ★ 422 (バリデーションエラー) のハンドリング
+                    if (response.status === 422) {
+                        const data = await response.json();
+                        // Laravelのエラーレスポンス { message: "...", errors: { title: ["..."] } } からメッセージを抽出
+                        const errorMessage = data.errors?.title?.[0] || data.message || "Invalid input.";
+                        
+                        // エラーをセットして処理を中断 (catchブロックには飛ばさない)
+                        this.newCardForm.error = errorMessage;
+                        return null; // nullを返して次のthenをスキップさせる判定に使う
                     }
+
                     if (!response.ok) {
-                        throw new Error("Failed to create card."); // "..." に変更
+                        throw new Error("Failed to create card.");
                     }
                     return response.json();
                 })
                 .then(newCard => {
-                    // ★ 修正: .push() の代わりに、新しい配列で置き換える
-                    list.cards = [...list.cards, newCard];
+                    // バリデーションエラーだった場合はここで終了
+                    if (!newCard) return;
+
+                    // 成功時の処理
+                    list.cards = [...list.cards, newCard]; // スプレッド構文で再代入してリアクティブ更新
                     
+                    // フォームをリセット
                     this.newCardForm.listId = null;
                     this.newCardForm.title = ""; 
+                    this.newCardForm.error = null;
                 })
                 .catch(error => {
-                    console.error("Error creating card:", error); // "..." に変更
-                    // バリデーション失敗以外のエラー
-                    if (error.message !== "Validation failed") { // "..." に変更
-                        alert("An error occurred while adding the card."); // "..." に変更
-                    }
+                    console.error("Error creating card:", error);
+                    alert("An error occurred while adding the card.");
                 });
             },
 
@@ -2423,18 +2441,27 @@
                                         <form @submit.prevent="submitNewCard(list)" 
                                             class="space-y-2">
                                             
-                                            {{-- ★ 変更点: x-model と :x-ref を動的に設定 --}}
+                                            {{-- テキストエリア --}}
                                             <textarea x-model="newCardForm.title"
                                                     :x-ref="'newCardTitleInput_' + list.id"
-                                                    @keydown.escape.prevent="newCardForm.listId = null; newCardForm.title = ''"
+                                                    {{-- ★ 入力したらエラーを消す --}}
+                                                    @input="newCardForm.error = null"
+                                                    @keydown.escape.prevent="newCardForm.listId = null; newCardForm.title = ''; newCardForm.error = null"
                                                     @keydown.enter.prevent="$event.target.form.requestSubmit()"
-                                                    class="block w-full text-sm rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 focus:border-indigo-500 focus:ring-indigo-500 shadow-sm"
+                                                    {{-- ★ エラー時に枠線を赤くするクラスバインディングを追加 --}}
+                                                    :class="{ 'border-red-500 focus:border-red-500 focus:ring-red-500': newCardForm.error }"
+                                                    class="block w-full text-sm rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 focus:border-indigo-500 focus:ring-indigo-500 shadow-sm transition-colors duration-200"
                                                     rows="3" 
                                                     placeholder="Enter a title for this card..."></textarea>
                                             
+                                            {{-- ★★★ エラーメッセージ表示エリア ★★★ --}}
+                                            <div x-show="newCardForm.error" x-transition class="text-red-500 text-xs font-medium ml-1">
+                                                <span x-text="newCardForm.error"></span>
+                                            </div>
+
                                             <div class="flex items-center space-x-2">
                                                 <x-primary-button type="submit">Add card</x-primary-button>
-                                                <button @click="newCardForm.listId = null; newCardForm.title = ''"
+                                                <button @click="newCardForm.listId = null; newCardForm.title = ''; newCardForm.error = null"
                                                         type="button"
                                                         class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-white">
                                                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>

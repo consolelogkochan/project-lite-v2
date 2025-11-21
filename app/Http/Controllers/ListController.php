@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use App\Models\Board; // 1. Boardモデルを追加
 use App\Http\Requests\ListStoreRequest; // 2. 作成したRequestを追加
 use App\Http\Requests\ListUpdateRequest;
+use App\Http\Requests\ListOrderRequest;
 use App\Models\BoardList;
 use Illuminate\Support\Facades\Log;
 
@@ -66,15 +67,12 @@ class ListController extends Controller
     /**
     * リストの表示順序を更新する (AJAXリクエスト)
     */
-    public function updateOrder(Request $request)
+    public function updateOrder(ListOrderRequest $request)
     {
-        // 1. フロントエンドから送信された、新しい順序のID配列を取得
-        $orderedListIds = $request->input('orderedListIds');
+        // ★ バリデーションは自動化されたので manual check は削除
 
-        // 2. バリデーション
-        if (!is_array($orderedListIds)) {
-            return response()->json(['message' => 'Invalid data.'], 400);
-        }
+        // バリデーション済みのデータを取得
+        $orderedListIds = $request->validated()['orderedListIds'];
 
         // ▼▼▼ ログを仕込む ▼▼▼
         Log::info('Updating list order. Received IDs:', $orderedListIds);

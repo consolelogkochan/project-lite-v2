@@ -6,7 +6,7 @@ use Illuminate\Http\Request;
 use App\Models\BoardList;
 use App\Models\Card;
 use App\Models\User;
-use Illuminate\Support\Facades\Validator;
+// use Illuminate\Support\Facades\Validator;
 // ★ use Illuminate\Validation\Rule; // (将来の権限チェックで使うかも)
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
@@ -15,21 +15,19 @@ use Illuminate\Support\Facades\Auth; // (なければ追加)
 use App\Events\CardCreated;
 use App\Events\CardDeleted;
 
+// ★ 新しいRequestクラスをインポート
+use App\Http\Requests\CardStoreRequest;
+use App\Http\Requests\CardUpdateRequest;
+use App\Http\Requests\CardOrderRequest;
+
 class CardController extends Controller
 {
     /**
      * 新しいカードを作成して保存する (API)
      */
-    public function store(Request $request, BoardList $list)
+    public function store(CardStoreRequest $request, BoardList $list)
     {
-        // バリデーション
-        $validator = Validator::make($request->all(), [
-            'title' => 'required|string|max:255',
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json($validator->errors(), 422);
-        }
+        // ★ バリデーションロジックを削除 (自動化されるため)
 
         // 新しいカードの 'order' を決定
         // そのリストにある既存のカードの最大 'order' + 1、またはカードがなければ 0
@@ -75,61 +73,16 @@ class CardController extends Controller
      * (主にタイトル更新用)
      * ★ このメソッドを追加
      */
-    public function update(Request $request, Card $card)
+    public function update(CardUpdateRequest $request, Card $card)
     {
         // TODO: ここに「このカードを編集する権限があるか」の
         // 認可(Policy)チェックを将来追加する
 
-        // バリデーション
-        $validator = Validator::make($request->all(), [
-            // title と description のどちらか一方だけが送られてくる場合があるため、
-            // 'sometimes' (リクエストに存在する場合のみ) 'required' (必須) とする
-            'title' => 'sometimes|required|string|max:255',
-            'description' => 'sometimes|nullable|string', // nullable(nullを許可) に設定
-            // ★ 修正点: start_date はシンプルに
-            'start_date' => 'sometimes|nullable|date',
-            // ★ 修正点: end_date のルールを条件付きにする
-            'end_date' => [
-                'sometimes', 'nullable', 'date',
-                // ★ 修正: start_date "も" end_date "も" filled 
-                // (nullでない) 場合にのみ、after_or_equal を適用
-                Rule::when($request->filled('start_date') && $request->filled('end_date'), [
-                    'after_or_equal:start_date'
-                ]),
-            ],
-            
-            'reminder_at' => [
-                'sometimes', 'nullable', 'date',
-                // ★ 修正: end_date "も" reminder_at "も" filled 
-                // (nullでない) 場合にのみ、before_or_equal を適用
-                Rule::when($request->filled('end_date') && $request->filled('reminder_at'), [
-                    'before_or_equal:end_date'
-                ]),
-            ],
-
-            'cover_image_id' => [
-                'sometimes',
-                'nullable',
-                'integer',
-                // cover_image_id が null でない場合、
-                // attachments テーブルに存在し、
-                // かつ、その attachment がこのカードに属していることを確認
-                Rule::exists('attachments', 'id')->where(function ($query) use ($card) {
-                    return $query->where('card_id', $card->id);
-                }),
-            ],
-
-            'is_completed' => 'sometimes|required|boolean',
-            'board_list_id' => 'sometimes|required|integer|exists:lists,id',
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json($validator->errors(), 422);
-        }
+        // ★ Validator::make ブロックをすべて削除
 
         // データを更新
-        // $request->all() を使うことで、送られてきたキー(titleまたはdescription)のみを更新
-        $card->update($request->all());
+        // ★ validated() を使うと、バリデーション済みのデータだけが取得できるのでより安全です
+        $card->update($request->validated());
 
         // 更新されたカードデータを返す
         return response()->json($card);
@@ -164,19 +117,9 @@ class CardController extends Controller
     /**
      * カードの順序と所属リストを一括更新する (API)
      */
-    public function updateOrder(Request $request)
+    public function updateOrder(CardOrderRequest $request)
     {
-        // バリデーション
-        $validator = Validator::make($request->all(), [
-            'lists' => 'required|array',
-            'lists.*.id' => 'required|integer|exists:lists,id',
-            'lists.*.cards' => 'required|array',
-            'lists.*.cards.*' => 'required|integer|exists:cards,id',
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json($validator->errors(), 422);
-        }
+        // ★ Validator::make ブロックを削除
 
         // TODO: 認可(Policy)チェック
 
@@ -184,7 +127,7 @@ class CardController extends Controller
         try {
             DB::beginTransaction();
 
-            $lists = $request->input('lists', []);
+            $lists = $request->validated()['lists'] ?? [];
             $movedCardsInfo = []; // ★ 移動したカードの情報を一時保存する配列
 
             foreach ($lists as $listData) {
