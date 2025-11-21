@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Auth;
 // use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Gate;
 use App\Events\CommentPosted;
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 
 // ★ 追加
 use App\Http\Requests\CommentStoreRequest;
@@ -16,13 +17,15 @@ use App\Http\Requests\CommentUpdateRequest;
 
 class CommentController extends Controller
 {
+    use AuthorizesRequests;
     /**
      * 新しいコメントを保存する (API)
      */
     public function store(CommentStoreRequest $request, Card $card)
     {
-        // TODO: ここに「このカードにコメントする権限があるか」の
-        // 認可(Policy)チェックを将来追加する
+        // コメント投稿 = カードの閲覧権限があればOKとみなす
+        // (あるいは 'update' 権限でも可)
+        $this->authorize('view', $card);
 
         // ★ Validator ブロックを削除
 
@@ -48,12 +51,8 @@ class CommentController extends Controller
      */
     public function update(CommentUpdateRequest $request, Comment $comment)
     {
-        // 認可(Policy)チェック: 認証済みユーザーがこのコメントを更新できるか
-        // (自分自身のコメントであるか)
-        if (Auth::id() !== $comment->user_id) {
-            return response()->json(['message' => 'Forbidden'], 403);
-        }
-        // (将来的に Gate::authorize('update', $comment); に置き換える)
+        // CommentPolicy@update (本人のみ)
+        $this->authorize('update', $comment);
 
         // ★ Validator ブロックを削除
 
@@ -74,14 +73,8 @@ class CommentController extends Controller
      */
     public function destroy(Comment $comment)
     {
-        // 認可(Policy)チェック: 認証済みユーザーがこのコメントを削除できるか
-        // (自分自身のコメントであるか、またはボードのオーナーであるか等)
-        // ※
-        // 簡易的な認可チェック（本人のみ）
-        if (Auth::id() !== $comment->user_id) {
-            return response()->json(['message' => 'Forbidden'], 403);
-        }
-        // (将来的に Gate::authorize('delete', $comment); に置き換える)
+        // CommentPolicy@delete (本人 or 管理者)
+        $this->authorize('delete', $comment);
 
         // コメントをDBから削除
         $comment->delete();

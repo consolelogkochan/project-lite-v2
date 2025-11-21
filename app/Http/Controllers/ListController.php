@@ -9,15 +9,21 @@ use App\Http\Requests\ListUpdateRequest;
 use App\Http\Requests\ListOrderRequest;
 use App\Models\BoardList;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 
 
 class ListController extends Controller
 {
+    use AuthorizesRequests;
     /**
      * 新しいリストを作成して保存する (AJAXリクエスト)
      */
     public function store(ListStoreRequest $request, Board $board)
     {
+        // ★ BoardPolicy@update (または addList などを定義してもよいが update で代用可)
+        // ここでは「ボードを編集できる人＝リストを追加できる」とみなす
+        $this->authorize('update', $board);
+
         // 3. バリデーション済みのデータを取得
         $validated = $request->validated();
 
@@ -40,6 +46,9 @@ class ListController extends Controller
      */
     public function update(ListUpdateRequest $request, BoardList $list)
     {
+        // ★ 追加: BoardListPolicy@update
+        $this->authorize('update', $list);
+
         // 1. バリデーション済みのデータを取得
         $validated = $request->validated();
 
@@ -56,8 +65,8 @@ class ListController extends Controller
      */
     public function destroy(BoardList $list)
     {
-        // TODO: 認可（ポリシー）を追加して、ボードの所有者だけが
-        // リストを削除できるように制限するのが望ましい
+        // ★ 追加: BoardListPolicy@delete
+        $this->authorize('delete', $list);
 
         $list->delete();
 

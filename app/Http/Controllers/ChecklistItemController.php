@@ -4,27 +4,24 @@ namespace App\Http\Controllers;
 
 use App\Models\Checklist;
 use App\Models\ChecklistItem;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Validator;
+// use Illuminate\Http\Request;
+// use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
+use App\Http\Requests\ChecklistItemStoreRequest;
+use App\Http\Requests\ChecklistItemUpdateRequest;
+use App\Http\Requests\ChecklistItemOrderRequest;
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 
 class ChecklistItemController extends Controller
 {
+    use AuthorizesRequests;
     /**
      * 新しいチェックリスト項目を作成して保存する (API)
      */
-    public function store(Request $request, Checklist $checklist)
+    public function store(ChecklistItemStoreRequest $request, Checklist $checklist)
     {
-        // TODO: 認可チェック
-
-        // バリデーション
-        $validator = Validator::make($request->all(), [
-            'content' => 'required|string',
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json($validator->errors(), 422);
-        }
+        // 親チェックリストの更新権限 = アイテム追加権限
+        $this->authorize('update', $checklist);
 
         // 新しい項目の 'position' を決定
         // 既存のアイテムの最大 'position' + 1、またはアイテムがなければ 0
@@ -47,22 +44,13 @@ class ChecklistItemController extends Controller
      * (主に 'is_completed' または 'content' の更新用)
      * ★ このメソッドを追加
      */
-    public function update(Request $request, ChecklistItem $item)
+    public function update(ChecklistItemUpdateRequest $request, ChecklistItem $item)
     {
-        // TODO: 認可チェック
-        
-        // バリデーション
-        $validator = Validator::make($request->all(), [
-            'content' => 'sometimes|required|string',
-            'is_completed' => 'sometimes|required|boolean',
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json($validator->errors(), 422);
-        }
+        // ChecklistItemPolicy@update
+        $this->authorize('update', $item);
 
         // データを更新
-        $item->update($request->all());
+        $item->update($request->validated());
 
         // 更新されたアイテムを返す (200 OK)
         return response()->json($item);
@@ -74,7 +62,8 @@ class ChecklistItemController extends Controller
      */
     public function destroy(ChecklistItem $item)
     {
-        // TODO: 認可チェック
+        // ChecklistItemPolicy@delete
+        $this->authorize('delete', $item);
 
         $item->delete();
 
@@ -86,20 +75,12 @@ class ChecklistItemController extends Controller
      * チェックリスト項目の順序を一括更新する (API)
      * ★ このメソッドを追加
      */
-    public function updateOrder(Request $request)
+    public function updateOrder(ChecklistItemOrderRequest $request)
     {
-        // バリデーション
-        $validator = Validator::make($request->all(), [
-            'checklist_id' => 'required|integer|exists:checklists,id',
-            'ordered_item_ids' => 'required|array',
-            'ordered_item_ids.*' => 'required|integer|exists:checklist_items,id',
-        ]);
 
-        if ($validator->fails()) {
-            return response()->json($validator->errors(), 422);
-        }
-
-        // TODO: 認可チェック (このチェックリストを編集する権限があるか)
+        // 配列処理のため、代表して親チェックリストの権限を確認する
+        $checklist = \App\Models\Checklist::findOrFail($request->checklist_id);
+        $this->authorize('update', $checklist);
         
         $checklistId = $request->input('checklist_id');
         $itemIds = $request->input('ordered_item_ids', []);

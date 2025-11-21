@@ -4,26 +4,23 @@ namespace App\Http\Controllers;
 
 use App\Models\Card;
 use App\Models\Checklist;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Validator;
+// use Illuminate\Http\Request;
+// use Illuminate\Support\Facades\Validator;
+use App\Http\Requests\ChecklistStoreRequest;
+use App\Http\Requests\ChecklistUpdateRequest;
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 
 class ChecklistController extends Controller
 {
+    // クラス先頭に追加
+    use AuthorizesRequests;
     /**
      * 新しいチェックリストを作成して保存する (API)
      */
-    public function store(Request $request, Card $card)
+    public function store(ChecklistStoreRequest $request, Card $card)
     {
-        // TODO: 認可チェック
-
-        // バリデーション
-        $validator = Validator::make($request->all(), [
-            'title' => 'required|string|max:255',
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json($validator->errors(), 422);
-        }
+        // カード編集権限が必要
+        $this->authorize('update', $card);
 
         // チェックリストを作成
         $checklist = $card->checklists()->create([
@@ -43,21 +40,13 @@ class ChecklistController extends Controller
      * (主にタイトルの更新用)
      * ★ このメソッドを追加
      */
-    public function update(Request $request, Checklist $checklist)
+    public function update(ChecklistUpdateRequest $request, Checklist $checklist)
     {
-        // TODO: 認可チェック
-        
-        // バリデーション
-        $validator = Validator::make($request->all(), [
-            'title' => 'required|string|max:255',
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json($validator->errors(), 422);
-        }
+        // ChecklistPolicy@update
+        $this->authorize('update', $checklist);
 
         // データを更新
-        $checklist->update($request->all());
+        $checklist->update($request->validated());
 
         // 更新されたチェックリストを返す (200 OK)
         return response()->json($checklist);
@@ -69,7 +58,8 @@ class ChecklistController extends Controller
      */
     public function destroy(Checklist $checklist)
     {
-        // TODO: 認可チェック
+        // ChecklistPolicy@delete
+        $this->authorize('delete', $checklist);
 
         // 削除 (onDelete('cascade') により、items も自動削除される)
         $checklist->delete();

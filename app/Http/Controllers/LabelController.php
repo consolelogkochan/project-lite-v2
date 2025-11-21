@@ -6,17 +6,26 @@ use App\Models\Board;
 use App\Models\Label;
 use App\Models\Card;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Validator; 
-use Illuminate\Validation\Rule;
+// use Illuminate\Support\Facades\Validator; 
+// use Illuminate\Validation\Rule;
+// ★ 1. この行を追加
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
+
+// ★ 追加
+use App\Http\Requests\LabelStoreRequest;
+use App\Http\Requests\LabelUpdateRequest;
 
 class LabelController extends Controller
 {
+    // ★ 2. クラス内でトレイトを使用
+    use AuthorizesRequests;
     /**
      * 特定のボードに属するすべてのラベルを取得 (API)
      */
     public function index(Board $board)
     {
-        // TODO: 認可チェック (このボードを閲覧する権限があるか)
+        // ボード閲覧権限
+        $this->authorize('view', $board);
         
         // 'created_at' の昇順（古い順）で返す
         $labels = $board->labels()->orderBy('created_at', 'asc')->get();
@@ -27,27 +36,10 @@ class LabelController extends Controller
     /**
      * 新しいラベルを作成して保存する (API)
      */
-    public function store(Request $request, Board $board)
+    public function store(LabelStoreRequest $request, Board $board)
     {
-        // TODO: 認可チェック (このボードにラベルを作成する権限があるか)
-
-        // バリデーション
-        $validator = Validator::make($request->all(), [
-            'name' => [
-                'required',
-                'string',
-                'max:255',
-                // ボード内でラベル名が重複しないようにする
-                Rule::unique('labels')->where(function ($query) use ($board) {
-                    return $query->where('board_id', $board->id);
-                }),
-            ],
-            'color' => 'required|string|max:50', // 例: 'bg-red-500'
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json($validator->errors(), 422);
-        }
+        // ラベル作成 = ボード更新権限 (メンバーならOK)
+        $this->authorize('update', $board); // または view でも良いが update が無難
 
         // ラベルを作成
         $label = $board->labels()->create([
@@ -63,31 +55,15 @@ class LabelController extends Controller
      * ラベルを更新する (API)
      * ★ このメソッドを追加
      */
-    public function update(Request $request, Label $label)
+    public function update(LabelUpdateRequest $request, Label $label)
     {
-        // TODO: 認可チェック (このボードのラベルを編集する権限があるか)
+        // LabelPolicy@update
+        $this->authorize('update', $label);
+        
         $board = $label->board; // ラベルが属するボードを取得
 
-        // バリデーション
-        $validator = Validator::make($request->all(), [
-            'name' => [
-                'required',
-                'string',
-                'max:255',
-                // ボード内でラベル名が重複しないようにする (自分自身のIDは除く)
-                Rule::unique('labels')->where(function ($query) use ($board) {
-                    return $query->where('board_id', $board->id);
-                })->ignore($label->id), // ★ 自分のIDを無視
-            ],
-            'color' => 'required|string|max:50',
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json($validator->errors(), 422);
-        }
-
         // ラベルを更新
-        $label->update($request->all());
+        $label->update($request->validated());
 
         // 更新されたラベルを返す (200 OK)
         return response()->json($label);
@@ -99,7 +75,8 @@ class LabelController extends Controller
      */
     public function destroy(Label $label)
     {
-        // TODO: 認可チェック (このボードのラベルを削除する権限があるか)
+        // LabelPolicy@delete
+        $this->authorize('delete', $label);
         
         $label->delete();
 
@@ -113,7 +90,8 @@ class LabelController extends Controller
      */
     public function attachLabel(Card $card, Label $label)
     {
-        // TODO: 認可チェック
+        // カードを編集する権限が必要
+        $this->authorize('update', $card);
         // (ユーザーはこのカードとラベルの両方にアクセスできるか？)
         // (カードとラベルが同じボードに属しているか？)
         // if ($card->board->id !== $label->board_id) {
@@ -137,7 +115,8 @@ class LabelController extends Controller
      */
     public function detachLabel(Card $card, Label $label)
     {
-        // TODO: 認可チェック
+        // カードを編集する権限が必要
+        $this->authorize('update', $card);
 
         // 中間テーブル (card_label) からレコードを削除
         $card->labels()->detach($label->id);

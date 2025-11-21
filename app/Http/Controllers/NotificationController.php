@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth; // この行を追加
 use Illuminate\Notifications\DatabaseNotification; // この行をuse文に追加
+// ★ 追加
+use App\Http\Requests\NotificationPreferenceRequest;
 
 class NotificationController extends Controller
 {
@@ -50,19 +52,12 @@ class NotificationController extends Controller
      * 通知設定を更新する (API)
      * ★ このメソッドを追加
      */
-    public function updatePreferences(Request $request)
+    public function updatePreferences(NotificationPreferenceRequest $request)
     {
         $user = Auth::user();
 
-        // バリデーション
-        $validated = $request->validate([
-            'notify_on_comment' => 'required|boolean',
-            'notify_on_attachment' => 'required|boolean',
-            'notify_on_due_date' => 'required|boolean',
-            'notify_on_card_move' => 'required|boolean',
-            'notify_on_card_created' => 'required|boolean',
-            'notify_on_card_deleted' => 'required|boolean',
-        ]);
+        // ★ $request->validate(...) を validated() に変更
+        $validated = $request->validated();
 
         // 設定を更新
         $user->update($validated);

@@ -14,6 +14,7 @@ use App\Events\CardMoved; // ★ 追加
 use Illuminate\Support\Facades\Auth; // (なければ追加)
 use App\Events\CardCreated;
 use App\Events\CardDeleted;
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 
 // ★ 新しいRequestクラスをインポート
 use App\Http\Requests\CardStoreRequest;
@@ -22,6 +23,7 @@ use App\Http\Requests\CardOrderRequest;
 
 class CardController extends Controller
 {
+    use AuthorizesRequests;
     /**
      * 新しいカードを作成して保存する (API)
      */
@@ -54,8 +56,8 @@ class CardController extends Controller
      */
     public function show(Card $card)
     {
-        // TODO: ここに「このカードを閲覧する権限があるか」の
-        // 認可(Policy)チェックを将来追加する
+        // ★ 追加: CardPolicy@view を実行
+        $this->authorize('view', $card);
 
         // ★ 2. 修正: 'assignedUsers' の Eager Loading を削除
         $card->load('list.board', 'comments.user', 'labels', 'checklists.items', 'attachments.user'); 
@@ -75,8 +77,8 @@ class CardController extends Controller
      */
     public function update(CardUpdateRequest $request, Card $card)
     {
-        // TODO: ここに「このカードを編集する権限があるか」の
-        // 認可(Policy)チェックを将来追加する
+        // ★ 追加: CardPolicy@update を実行
+        $this->authorize('update', $card);
 
         // ★ Validator::make ブロックをすべて削除
 
@@ -93,8 +95,8 @@ class CardController extends Controller
      */
     public function destroy(Card $card)
     {
-        // TODO: ここに「このカードを削除する権限があるか」の
-        // 認可(Policy)チェックを将来追加する
+        // ★ 追加: CardPolicy@delete を実行
+        $this->authorize('delete', $card);
 
         // ★ 1. 削除前に通知に必要な情報を退避
         $cardTitle = $card->title;

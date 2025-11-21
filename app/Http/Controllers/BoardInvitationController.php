@@ -5,27 +5,27 @@ namespace App\Http\Controllers;
 use App\Models\Board;
 use App\Models\User; 
 use Illuminate\Http\Request; 
-use Illuminate\Support\Facades\Validator; 
-use Illuminate\Validation\Rule;
+// use Illuminate\Support\Facades\Validator; 
+// use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
+
+// ★ 追加
+use App\Http\Requests\UserSearchRequest;
+use App\Http\Requests\BoardInviteRequest;
+use App\Http\Requests\BoardRoleUpdateRequest;
 
 class BoardInvitationController extends Controller
 {
     use AuthorizesRequests;
-    
+
     /**
      * ボードに招待するユーザーを検索する (API)
      */
-    public function searchUsers(Request $request, Board $board)
+    public function searchUsers(UserSearchRequest $request, Board $board)
     {
         // ★ 認可(Policy)チェック: ユーザーはこのボードに 'addMember' (招待) できるか？
         $this->authorize('addMember', $board);
-        
-        // バリデーション
-        $request->validate([
-            'q' => 'required|string|min:2', // 検索クエリ (q) は2文字以上
-        ]);
 
         $query = $request->input('q');
 
@@ -45,25 +45,10 @@ class BoardInvitationController extends Controller
         return response()->json($users);
     }
 
-    public function inviteUser(Request $request, Board $board)
+    public function inviteUser(BoardInviteRequest $request, Board $board)
     {
         // ★ 認可(Policy)チェック: 'addMember' (招待) 権限
         $this->authorize('addMember', $board);
-        
-        // ... (バリデーション)
-        $validator = Validator::make($request->all(), [
-            'user_id' => [
-                'required', 'integer', 'exists:users,id',
-                Rule::unique('board_user')->where(function ($query) use ($board) {
-                    return $query->where('board_id', $board->id);
-                }),
-            ],
-            'role' => ['required', 'string', Rule::in(['member', 'admin', 'guest'])]
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json($validator->errors(), 422);
-        }
 
         // 3. ユーザーを中間テーブル (board_user) に追加
         $board->users()->attach($request->user_id, [
@@ -101,26 +86,13 @@ class BoardInvitationController extends Controller
      * ボードメンバーの役割を更新する (API)
      * ★ このメソッドを追加
      */
-    public function updateRole(Request $request, Board $board, User $user)
+    public function updateRole(BoardRoleUpdateRequest $request, Board $board, User $user)
     {
         // ★ 認可(Policy)チェック: 'addMember' (招待/メンバー管理) 権限
         $this->authorize('addMember', $board);
         
         // （自分自身の役割を 'member' に降格しようとするのは許可するが、
         //    最後の管理者が自分自身の場合は降格を禁止する、などのロジックも将来追加可能）
-
-        // ★ 3. バリデーション
-        $validator = Validator::make($request->all(), [
-            'role' => [
-                'required',
-                'string',
-                Rule::in(['admin', 'member', 'guest']), // 許可する役割
-            ]
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json($validator->errors(), 422);
-        }
 
         // ★ 4. 役割を更新
         // 'board_user' 中間テーブルの 'role' カラムを更新
