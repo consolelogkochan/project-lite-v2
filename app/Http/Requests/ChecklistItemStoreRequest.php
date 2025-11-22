@@ -22,7 +22,8 @@ class ChecklistItemStoreRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'content' => 'required|string',
+            // max:255 を追加（ToDo項目として十分な長さ）
+            'content' => 'required|string|max:255',
         ];
     }
 }

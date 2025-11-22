@@ -22,7 +22,8 @@ class CommentUpdateRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'content' => 'required|string',
+            // max:1000 を追加
+            'content' => 'required|string|max:1000',
         ];
     }
 }

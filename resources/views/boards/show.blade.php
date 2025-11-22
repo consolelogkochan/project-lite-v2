@@ -438,13 +438,19 @@
                     },
                     body: JSON.stringify({ title: newTitle })
                 })
-                .then(response => {
+                .then(async response => {
+                    // ★ 422 エラーハンドリング (修正)
                     if (response.status === 422) {
-                        alert("Card title is required or too long."); // "..."
-                        throw new Error("Validation failed"); // "..."
+                        const data = await response.json();
+                        // タイトルのエラーメッセージを取得 (例: "The title must not be greater than 255 characters.")
+                        const message = data.errors?.title?.[0] || data.message || "Invalid input.";
+                        
+                        alert(message); // ★ 具体的な理由をアラート表示
+                        throw new Error("Validation failed");
                     }
+
                     if (!response.ok) {
-                        throw new Error("Failed to update card."); // "..."
+                        throw new Error("Failed to update card.");
                     }
                     return response.json();
                 })
@@ -490,7 +496,17 @@
                     },
                     body: JSON.stringify({ description: newDescription }) // description を送信
                 })
-                .then(response => {
+                .then(async response => {
+                    // ★ 422 エラーハンドリング (追加)
+                    if (response.status === 422) {
+                        const data = await response.json();
+                        // 説明文のエラーメッセージを取得
+                        const message = data.errors?.description?.[0] || data.message || "Invalid input.";
+                        
+                        alert(message); // ★ 具体的な理由をアラート表示
+                        throw new Error("Validation failed");
+                    }
+
                     if (!response.ok) {
                         throw new Error("Failed to update card description.");
                     }
@@ -510,8 +526,12 @@
                 })
                 .catch(error => {
                     console.error("Error updating card description:", error);
-                    alert("An error occurred while updating the card description.");
-                    this.editingCardDescription = false;
+                    if (error.message !== "Validation failed") {
+                        alert("An error occurred while updating the card description.");
+                    }
+                    // エラー時は編集モードを維持して修正させるか、閉じるか。今回は閉じる挙動を維持。
+                    // (UX的には維持したほうが親切ですが、元の挙動に合わせます)
+                    // this.editingCardDescription = false;
                 });
             },
 
@@ -527,10 +547,17 @@
                     },
                     body: JSON.stringify({ content: detail.content })
                 })
-                .then(response => {
+                .then(async response => {
+                    // ★ 422 エラーハンドリング (修正)
                     if (response.status === 422) {
-                        throw new Error("Comment content is required.");
+                        const data = await response.json();
+                        // コメントのエラーメッセージを取得
+                        const message = data.errors?.content?.[0] || data.message || "Invalid input.";
+                        
+                        // throwしてcatchブロックでアラートする
+                        throw new Error(message);
                     }
+
                     if (!response.ok) {
                         throw new Error("Failed to post comment.");
                     }
@@ -550,7 +577,8 @@
                 })
                 .catch(error => {
                     console.error("Error posting comment:", error);
-                    alert("An error occurred while posting the comment.");
+                    // catchしたエラーメッセージ(サーバーからのメッセージ)を表示
+                    alert(error.message);
                 });
             },
 
@@ -607,7 +635,13 @@
                     },
                     body: JSON.stringify({ content: newContent })
                 })
-                .then(response => {
+                .then(async response => {
+                    // ★ 422 エラーハンドリング (追加)
+                    if (response.status === 422) {
+                        const data = await response.json();
+                        const message = data.errors?.content?.[0] || data.message || "Invalid input.";
+                        throw new Error(message);
+                    }
                     if (response.status === 403) {
                         throw new Error("You do not have permission to edit this comment.");
                     }
@@ -629,16 +663,23 @@
                 })
                 .catch(error => {
                     console.error("Error updating comment:", error);
-                    alert(error.message || "An error occurred while updating the comment.");
-                    // エラー時もフォームを閉じる
-                    detail.callback();
+                    alert(error.message);
+                    // detail.callback(); // エラー時は閉じずに修正させるならコメントアウト
                 });
             },
 
             updateCardDatesFromModal(detail) {
-                const card = this.selectedCardData;
-                
-                // ★★★ リマインダー日時の計算 (変更なし) ★★★
+                // 1. データ取得と安全性チェック
+                // dispatchで渡された detail.card があれば優先し、なければ this.selectedCardData を使う
+                const card = detail.card || this.selectedCardData;
+
+                // カードIDがない場合は処理を中断（これが405エラーの根本原因を防ぎます）
+                if (!card || !card.id) {
+                    console.error("Error: Card ID is missing.");
+                    return;
+                }
+
+                // リマインダー日時の計算
                 let reminder_at = null;
                 const endDate = detail.endDate ? new Date(detail.endDate) : null;
                 
@@ -653,46 +694,54 @@
                     }
                     reminder_at = window.flatpickr.formatDate(reminderDate, "Y-m-d H:i:S");
                 }
-                // ★★★ 計算ここまで ★★★
 
-                // ★ 1. [FIX Bug 1] タイムゾーンバグ修正
-                // Flatpickr のローカル日付文字列 (JST) を
-                // JavaScript の Date オブジェクトとして解釈し、
-                // .toISOString() で UTC 文字列に変換してから API に送信する
                 const startISO = detail.startDate ? new Date(detail.startDate).toISOString() : null;
                 const endISO = detail.endDate ? new Date(detail.endDate).toISOString() : null;
 
-                fetch(`/cards/${card.id}`, {
+                // URLを明示的に変数化（デバッグしやすくする）
+                const url = `/cards/${card.id}`;
+
+                fetch(url, {
                     method: "PATCH",
                     headers: {
                         "Content-Type": "application/json",
-                        "X-CSRF-TOKEN": document.querySelector("meta[name=\"csrf-token\"]").getAttribute("content")
+                        "X-CSRF-TOKEN": document.querySelector("meta[name=\"csrf-token\"]").getAttribute("content"),
+                        "Accept": "application/json" // 明示的にJSONを要求
                     },
                     body: JSON.stringify({ 
-                        start_date: startISO, // ★ 修正
-                        end_date: endISO,     // ★ 修正
+                        start_date: startISO,
+                        end_date: endISO,
                         reminder_at: reminder_at
                     })
                 })
-                .then(response => {
+                .then(async response => {
+                    // ★ 修正点: 422エラーの中身（サーバーからのメッセージ）を取得する
                     if (response.status === 422) {
-                        alert("Invalid dates. Please ensure the due date is after the start date.");
-                        throw new Error("Validation failed");
+                        const data = await response.json();
+                        // エラー配列から最初のメッセージを取り出す
+                        // (PHP側で $fail(The due date must be...) と返したメッセージ)
+                        const errorMsg = data.errors?.end_date?.[0] 
+                                    || data.errors?.reminder_at?.[0] 
+                                    || data.message 
+                                    || "Invalid dates.";
+                        
+                        // エラーとして投げる（catchブロックでalertする）
+                        throw new Error(errorMsg); 
                     }
+
                     if (!response.ok) {
                         throw new Error("Failed to update card dates.");
                     }
                     return response.json();
                 })
                 .then(updatedCard => {
-                    // ★ 成功時の処理 ★
-                    
-                    // 1. モーダル内のデータを更新
-                    this.selectedCardData.start_date = updatedCard.start_date;
-                    this.selectedCardData.end_date = updatedCard.end_date;
-                    this.selectedCardData.reminder_at = updatedCard.reminder_at;
-                    
-                    // 2. メインボード（背景）のデータも更新 (変更なし)
+                    // 成功時の処理
+                    if (this.selectedCardData) {
+                        this.selectedCardData.start_date = updatedCard.start_date;
+                        this.selectedCardData.end_date = updatedCard.end_date;
+                        this.selectedCardData.reminder_at = updatedCard.reminder_at;
+                    }
+
                     const listIndex = this.lists.findIndex(l => l.id == updatedCard.board_list_id);
                     if (listIndex > -1) {
                         const cardIndex = this.lists[listIndex].cards.findIndex(c => c.id == updatedCard.id);
@@ -703,22 +752,15 @@
                         }
                     }
 
-                    // ★ 3. [FIX Bug 2] カレンダーとタイムラインに即時反映
-                    if (this.calendarInstance) {
-                        this.calendarInstance.refetchEvents();
-                    }
-                    if (this.timelineInstance) {
-                        this.timelineInstance.refetchEvents();
-                    }
+                    if (this.calendarInstance) this.calendarInstance.refetchEvents();
+                    if (this.timelineInstance) this.timelineInstance.refetchEvents();
                     
-                    // 4. ポップオーバーを閉じる (コールバックを実行)
-                    detail.callback();
+                    if (detail.callback) detail.callback();
                 })
                 .catch(error => {
                     console.error("Error updating card dates:", error);
-                    if (error.message !== "Validation failed") {
-                        alert("An error occurred while updating the dates.");
-                    }
+                    // サーバーからの具体的なエラーメッセージを表示
+                    alert(error.message);
                 });
             },
 
@@ -740,11 +782,13 @@
                         color: detail.color
                     })
                 })
-                .then(response => {
-                    if (response.status === 422) { // バリデーションエラー
-                        // (コントローラーの Rule::unique() で重複をチェック)
-                        alert("Label name already exists or is invalid.");
-                        throw new Error("Validation failed");
+                .then(async response => {
+                    // ★ 422 エラーハンドリング
+                    if (response.status === 422) {
+                        const data = await response.json();
+                        // name または color のエラーを取得
+                        const message = data.errors?.name?.[0] || data.errors?.color?.[0] || data.message || "Invalid input.";
+                        throw new Error(message);
                     }
                     if (!response.ok) {
                         throw new Error("Failed to create label.");
@@ -762,9 +806,8 @@
                 })
                 .catch(error => {
                     console.error("Error creating label:", error);
-                    if (error.message !== "Validation failed") {
-                        alert("An error occurred while creating the label.");
-                    }
+                    // サーバーからのメッセージを表示
+                    alert(error.message);
                 });
             },
 
@@ -786,10 +829,12 @@
                         color: detail.color
                     })
                 })
-                .then(response => {
+                .then(async response => {
+                    // ★ 422 エラーハンドリング
                     if (response.status === 422) {
-                        alert("Label name already exists or is invalid.");
-                        throw new Error("Validation failed");
+                        const data = await response.json();
+                        const message = data.errors?.name?.[0] || data.errors?.color?.[0] || data.message || "Invalid input.";
+                        throw new Error(message);
                     }
                     if (!response.ok) {
                         throw new Error("Failed to update label.");
@@ -810,9 +855,7 @@
                 })
                 .catch(error => {
                     console.error("Error updating label:", error);
-                    if (error.message !== "Validation failed") {
-                        alert("An error occurred while updating the label.");
-                    }
+                    alert(error.message);
                 });
             },
 
@@ -914,9 +957,12 @@
                     },
                     body: JSON.stringify({ title: detail.title })
                 })
-                .then(response => {
+                .then(async response => {
+                    // ★ 422 エラーハンドリング
                     if (response.status === 422) {
-                        throw new Error("Validation failed");
+                        const data = await response.json();
+                        const message = data.errors?.title?.[0] || data.message || "Invalid input.";
+                        throw new Error(message);
                     }
                     if (!response.ok) {
                         throw new Error("Failed to create checklist.");
@@ -935,7 +981,7 @@
                 })
                 .catch(error => {
                     console.error("Error creating checklist:", error);
-                    alert("An error occurred while creating the checklist.");
+                    alert(error.message);
                 });
             },
 
@@ -954,9 +1000,12 @@
                     },
                     body: JSON.stringify({ content: detail.content })
                 })
-                .then(response => {
+                .then(async response => {
+                    // ★ 422 エラーハンドリング
                     if (response.status === 422) {
-                        throw new Error("Validation failed");
+                        const data = await response.json();
+                        const message = data.errors?.content?.[0] || data.message || "Invalid input.";
+                        throw new Error(message);
                     }
                     if (!response.ok) {
                         throw new Error("Failed to create checklist item.");
@@ -979,7 +1028,7 @@
                 })
                 .catch(error => {
                     console.error("Error creating checklist item:", error);
-                    alert("An error occurred while creating the item.");
+                    alert(error.message);
                 });
             },
 
@@ -1060,9 +1109,12 @@
                     },
                     body: JSON.stringify({ content: newContent }) // content を送信
                 })
-                .then(response => {
+                .then(async response => {
+                    // ★ 422 エラーハンドリング
                     if (response.status === 422) {
-                        throw new Error("Validation failed");
+                        const data = await response.json();
+                        const message = data.errors?.content?.[0] || data.message || "Invalid input.";
+                        throw new Error(message);
                     }
                     if (!response.ok) {
                         throw new Error("Failed to update checklist item.");
@@ -1079,8 +1131,7 @@
                 })
                 .catch(error => {
                     console.error("Error updating checklist item:", error);
-                    alert("An error occurred while updating the item.");
-                    // エラー時もフォームを閉じる
+                    alert(error.message);
                     detail.callback();
                 });
             },
@@ -1168,7 +1219,13 @@
                     },
                     body: JSON.stringify({ title: newTitle }) // title を送信
                 })
-                .then(response => {
+                .then(async response => {
+                    // ★ 422 エラーハンドリング (追加)
+                    if (response.status === 422) {
+                        const data = await response.json();
+                        const message = data.errors?.title?.[0] || data.message || "Invalid input.";
+                        throw new Error(message);
+                    }
                     if (!response.ok) {
                         throw new Error("Failed to update checklist.");
                     }
@@ -1181,7 +1238,7 @@
                 })
                 .catch(error => {
                     console.error("Error updating checklist:", error);
-                    alert("An error occurred while updating the checklist.");
+                    alert(error.message);
                     detail.callback();
                 });
             },

@@ -22,7 +22,8 @@ class ChecklistItemUpdateRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'content'      => 'sometimes|required|string',
+            // max:255 を追加
+            'content'      => 'sometimes|required|string|max:255',
             'is_completed' => 'sometimes|required|boolean',
         ];
     }
