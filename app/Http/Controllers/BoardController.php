@@ -252,23 +252,23 @@ class BoardController extends Controller
             });
         }
         
-        // 5. ソートとデータ取得 (user_399_fix の修正)
-        $cards = $cardsQuery->orderBy("end_date")->get();
+        // 5. ソートとデータ取得
+        // ★ 修正: ->with('labels') を追加してラベル情報を取得
+        $cards = $cardsQuery->with('labels')->orderBy("end_date")->get();
         
         // 6. FullCalendar 形式にマッピング
         $viewType = $request->input("view", "calendar");
+        // ★★★ [FIX] タイムゾーン変換 ★★★
+        // ユーザーのタイムゾーン (例: 'Asia/Tokyo') に変換
+        // (config/app.php の 'timezone' が 'UTC' 前提のコード)
+        $localTimezone = config("app.timezone_user", "Asia/Tokyo"); // (JSTをデフォルトに)
 
         // FullCalendar 形式にマッピング
-        $events = $cards->map(function (Card $card) use ($board, $viewType) {
+        $events = $cards->map(function (Card $card) use ($board, $viewType, $localTimezone) {
             
             // Carbon オブジェクト (UTC) を取得
             $end = $card->end_date;
             $start = $card->start_date ? $card->start_date : $end;
-            
-            // ★★★ [FIX] タイムゾーン変換 ★★★
-            // ユーザーのタイムゾーン (例: 'Asia/Tokyo') に変換
-            // (config/app.php の 'timezone' が 'UTC' 前提のコード)
-            $localTimezone = config("app.timezone_user", "Asia/Tokyo"); // (JSTをデフォルトに)
             
             if ($viewType === "calendar") {
                 // --- カレンダービュー (dayGrid) 用 ---
@@ -300,6 +300,15 @@ class BoardController extends Controller
                 "url" => route("boards.show", $board->id) . "?card=" . $card->id,
                 "color" => $card->is_completed ? "#16a34a" : "#2563eb",
                 "className" => $card->is_completed ? "opacity-70" : "",
+                // ★ 追加: ラベル情報を 'extendedProps' に格納
+                "extendedProps" => [
+                    "labels" => $card->labels->map(function($label) {
+                        return [
+                            "name" => $label->name,
+                            "color" => $label->color, // 例: 'bg-red-500'
+                        ];
+                    }),
+                ]
             ];
         });
 

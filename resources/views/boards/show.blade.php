@@ -56,6 +56,7 @@
             viewMode: "board",
             calendarInstance: null,
             timelineInstance: null, // ★ 1. [NEW] タイムラインのインスタンスを保持
+            localReminder: "none",
             boardLabels: [],
             boardMembers: [], // ボードの全メンバーを保持する配列
             newListTitle: "",
@@ -110,11 +111,30 @@
                                 // 2. 取得したデータ（coverImage が追加された状態）をセット
                                 this.selectedCardData = data; 
                                 // ★★★ 修正ここまで ★★★ 
+
+                                // ★★★ [FIX] リマインダーのプルダウン状態 (localReminder) を復元 ★★★
+                                this.localReminder = "none"; // デフォルト
+
+                                if (data.end_date && data.reminder_at) {
+                                    const end = new Date(data.end_date).getTime();
+                                    const remind = new Date(data.reminder_at).getTime();
+                                    const diff = end - remind; // 差分（ミリ秒）
+
+                                    // 許容誤差を少し持たせて判定 (1分以内なら一致とみなす)
+                                    // 10分 = 600,000ms, 1時間 = 3,600,000ms, 1日 = 86,400,000ms
+                                    
+                                    if (Math.abs(diff - 600000) < 60000) {
+                                        this.localReminder = "10_minutes_before";
+                                    } else if (Math.abs(diff - 3600000) < 60000) {
+                                        this.localReminder = "1_hour_before";
+                                    } else if (Math.abs(diff - 86400000) < 60000) {
+                                        this.localReminder = "1_day_before";
+                                    }
+                                }
+                                // ★★★ 修正ここまで ★★★
                             })
                             .catch(error => {
-                                console.error("Error fetching card details:", error);
-                                alert("Failed to load card details. Please close the modal and try again.");
-                                // エラー時はモーダルを閉じる
+                                console.error(error);
                                 this.selectedCardId = null; 
                             });
                     } 
@@ -122,6 +142,8 @@
                     else {
                         // データをクリア
                         this.selectedCardData = null; 
+                        // ★ 変数リセット (localReminder をリセット)
+                        this.localReminder = "none";
                         // ★ ここから追加: 編集状態もリセット
                         this.editingCardTitleModal = false;
                         this.editedCardTitleModal = "";
@@ -680,11 +702,17 @@
                 }
 
                 // リマインダー日時の計算
-                let reminder_at = null;
-                const endDate = detail.endDate ? new Date(detail.endDate) : null;
+                // ★ 1. 日付オブジェクトの生成（ユーザーの入力したローカル時間）
+                // detail.endDate は "YYYY-MM-DD HH:mm" などの形式と想定
+                const endDateObj = detail.endDate ? new Date(detail.endDate) : null;
                 
-                if (endDate && detail.reminder !== "none") {
-                    let reminderDate = new Date(endDate.getTime()); 
+                // ★ 2. リマインダー日時の計算
+                let reminderISO = null; // 変数名を変更 (reminder_at -> reminderISO)
+
+                if (endDateObj && detail.reminder !== "none") {
+                    // 期限の日時をコピーして計算ベースにする
+                    let reminderDate = new Date(endDateObj.getTime());
+
                     if (detail.reminder === "10_minutes_before") {
                         reminderDate.setMinutes(reminderDate.getMinutes() - 10);
                     } else if (detail.reminder === "1_hour_before") {
@@ -692,7 +720,10 @@
                     } else if (detail.reminder === "1_day_before") {
                         reminderDate.setDate(reminderDate.getDate() - 1);
                     }
-                    reminder_at = window.flatpickr.formatDate(reminderDate, "Y-m-d H:i:S");
+
+                    // ★ 修正: UTC文字列 (ISO 8601) に変換して統一する
+                    // これで start_date, end_date と同じ基準になります
+                    reminderISO = reminderDate.toISOString();
                 }
 
                 const startISO = detail.startDate ? new Date(detail.startDate).toISOString() : null;
@@ -711,7 +742,7 @@
                     body: JSON.stringify({ 
                         start_date: startISO,
                         end_date: endISO,
-                        reminder_at: reminder_at
+                        reminder_at: reminderISO // ★ UTC文字列を送信
                     })
                 })
                 .then(async response => {
@@ -1791,6 +1822,50 @@
                 );
             },
 
+            // ★ イベントの見た目をカスタマイズする関数 (ラベル表示用)
+            renderEventContent(arg) {
+                const labels = arg.event.extendedProps.labels || [];
+                const titleText = arg.event.title;
+                const timeText = arg.timeText;
+
+                // メインコンテナ
+                let container = document.createElement("div");
+                container.className = "flex flex-col overflow-hidden w-full h-full px-1 py-0.5";
+
+                // 1. ラベルエリア (バッジ表示)
+                if (labels.length > 0) {
+                    let labelContainer = document.createElement("div");
+                    labelContainer.className = "flex flex-wrap gap-1 mb-0.5";
+                    
+                    labels.forEach(label => {
+                        let badge = document.createElement("div");
+                        // Tailwindの色クラス(bg-xxx-500)を適用
+                        // 文字色を白、文字サイズ極小、角丸にする
+                        badge.className = `${label.color} text-white text-[10px] px-1 rounded truncate max-w-[60px] leading-tight`;
+                        badge.innerText = label.name;
+                        badge.title = label.name; // ホバー時にフルネーム表示
+                        labelContainer.appendChild(badge);
+                    });
+                    container.appendChild(labelContainer);
+                }
+
+                // 2. 時間表示 (タイムラインなどで時間がある場合)
+                if (timeText) {
+                    let timeDiv = document.createElement("div");
+                    timeDiv.className = "text-[10px] opacity-90 leading-tight";
+                    timeDiv.innerText = timeText;
+                    container.appendChild(timeDiv);
+                }
+
+                // 3. タイトル
+                let title = document.createElement("div");
+                title.className = "text-xs font-semibold truncate leading-tight";
+                title.innerText = titleText;
+                container.appendChild(title);
+
+                return { domNodes: [container] };
+            },
+
             initCalendar() {
                 // (既存のインスタンスチェックは変更なし)
                 if (this.calendarInstance) {
@@ -1803,6 +1878,8 @@
                 this.calendarInstance = new window.FullCalendar.Calendar(calendarEl, {
                     plugins: [ window.FullCalendar.dayGridPlugin, window.FullCalendar.interactionPlugin ],
                     initialView: "dayGridMonth",
+                    // ★ 追加: ラベル描画関数を適用
+                    eventContent: this.renderEventContent,
                     height: "auto",
                     
                     headerToolbar: {
@@ -1889,6 +1966,8 @@
                         window.FullCalendar.interactionPlugin
                     ], 
                     initialView: "timeGridWeek",
+                    // ★ 追加: ラベル描画関数を適用
+                    eventContent: this.renderEventContent,
                     height: "auto",
                     
                     headerToolbar: {
@@ -1992,6 +2071,54 @@
                 }
                 // --- 補正ここまで ---
 
+                // ★★★ [NEW] リマインダー追従確認ロジック ★★★
+                let nextReminderAt = null;
+                
+                // 1. 変更前のカードデータを this.lists から検索
+                let originalCard = null;
+                for (const list of this.lists) {
+                    const found = list.cards.find(c => c.id == event.id);
+                    if (found) { originalCard = found; break; }
+                }
+
+                // 2. リマインダーが設定されている場合、差分を計算して確認
+                if (originalCard && originalCard.reminder_at && originalCard.end_date) {
+                    const oldEndDateObj = new Date(originalCard.end_date);
+                    const newEndDateObj = newEndDate; // 上で計算済みの新しい期限
+
+                    // 時間差（ミリ秒）を計算
+                    const diff = newEndDateObj.getTime() - oldEndDateObj.getTime();
+
+                    // 誤操作防止のため、1分以上の変更がある場合のみ確認
+                    if (Math.abs(diff) > 60000) {
+                        // メッセージを変更: "移動を中止するか" を明確にする
+                        const msg = "This card has a reminder set.\nMoving the due date will shift the reminder as well.\n\n[OK]: Proceed (Move both)\n[Cancel]: Abort";
+                        
+                        if (confirm(msg)) {
+                            // 追従する場合: 元のリマインダー日時に差分を足す
+                            const oldReminderObj = new Date(originalCard.reminder_at);
+                            const newReminderObj = new Date(oldReminderObj.getTime() + diff);
+                            
+                            // ★ 修正: ここを toISOString() (UTC) に変更
+                            nextReminderAt = newReminderObj.toISOString();
+                        } else {
+                            // ★ [Cancel] -> 移動自体をキャンセルして終了
+                            revertCallback();
+                            return; // ここで処理終了 (APIは叩かない)
+                        }  
+                    }
+                }
+
+                // API送信ペイロードの作成
+                const payload = {
+                    start_date: newStartDate.toISOString(),
+                    end_date: newEndDate.toISOString()
+                };
+                // リマインダー変更がある場合のみ追加
+                if (nextReminderAt) {
+                    payload.reminder_at = nextReminderAt;
+                }
+
                 fetch(`/cards/${event.id}`, { 
                     method: "PATCH",
                     headers: {
@@ -1999,12 +2126,18 @@
                         "X-CSRF-TOKEN": document.querySelector("meta[name=\"csrf-token\"]").getAttribute("content"),
                         "Accept": "application/json"
                     },
-                    body: JSON.stringify({
-                        start_date: newStartDate.toISOString(),
-                        end_date: newEndDate.toISOString()
-                    })
+                    body: JSON.stringify(payload)
                 })
-                .then(response => {
+                .then(async response => {
+                    // 422エラーハンドリング (前回実装済み)
+                    if (response.status === 422) {
+                        const data = await response.json();
+                        const errorMsg = data.errors?.end_date?.[0] 
+                                      || data.errors?.reminder_at?.[0] 
+                                      || data.message 
+                                      || "Invalid dates.";
+                        throw new Error(errorMsg);
+                    }
                     if (!response.ok) {
                         throw new Error("Failed to update card dates.");
                     }
@@ -2017,6 +2150,18 @@
                         this.selectedCardData.end_date = updatedCard.end_date;
                     }
                     
+                    // リスト内のカードデータも更新 (次回のD&Dのために重要)
+                    const listIndex = this.lists.findIndex(l => l.id == updatedCard.board_list_id);
+                    if (listIndex > -1) {
+                        const cardIndex = this.lists[listIndex].cards.findIndex(c => c.id == updatedCard.id);
+                        if (cardIndex > -1) {
+                            const target = this.lists[listIndex].cards[cardIndex];
+                            target.start_date = updatedCard.start_date;
+                            target.end_date = updatedCard.end_date;
+                            target.reminder_at = updatedCard.reminder_at;
+                        }
+                    }
+
                     // カレンダー/タイムラインのイベント更新ロジック
                     const calendarEvent = this.calendarInstance ? this.calendarInstance.getEventById(updatedCard.id) : null;
                     const timelineEvent = this.timelineInstance ? this.timelineInstance.getEventById(updatedCard.id) : null;
@@ -2046,8 +2191,9 @@
                 })
                 .catch(error => {
                     console.error("Error updating card dates:", error);
-                    alert("An error occurred while updating the card date.");
-                    revertCallback(); // 失敗時にドラッグを元に戻す
+                    // エラー時はアラートを出して、ドラッグを元に戻す
+                    alert(error.message);
+                    revertCallback(); 
                 });
             }
         }'

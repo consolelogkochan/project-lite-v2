@@ -470,7 +470,7 @@
                                     open: false, 
                                     localStartDate: null, 
                                     localEndDate: null,
-                                    localReminder: "none",
+                                    popoverReminder: "none", // ★ 1. 変数名を変更 (親との衝突回避)
                                     
                                     pickerStartInstance: null, 
                                     pickerEndInstance: null,
@@ -478,14 +478,17 @@
                                     isPickerOpen: false, // ★ 1. カレンダーが開いているかどうかのフラグ
 
                                     initPickers() {
-                                        // 1. 親スコープから日付をコピー (Y-m-d H:i 形式に変換)
+                                        // 親スコープから日付をコピー
                                         this.localStartDate = this.selectedCardData.start_date 
                                             ? window.flatpickr.formatDate(new Date(this.selectedCardData.start_date), "Y-m-d H:i") 
                                             : null;
                                         this.localEndDate = this.selectedCardData.end_date
                                             ? window.flatpickr.formatDate(new Date(this.selectedCardData.end_date), "Y-m-d H:i")
                                             : null;
-                                        this.calculateReminderValue(); 
+                                        
+                                        // ★ 2. 親スコープで計算済みの "localReminder" をコピーして初期化
+                                        // (watchSelectedCard で計算された "1_day_before" などが入る)
+                                        this.popoverReminder = localReminder;
 
                                         // 2. flatpickr を初期化または更新
                                         
@@ -523,32 +526,19 @@
                                                 },
                                                 onChange: (selectedDates) => {
                                                     this.localEndDate = selectedDates[0] ? window.flatpickr.formatDate(selectedDates[0], "Y-m-d H:i") : null;
-                                                    this.calculateReminderValue(); 
+                                                    // ★ 3. 日付変更時のロジック修正
+                                                    // 日付が変わっても、ユーザーが選んでいる "popoverReminder" (例: 1日前) は
+                                                    // そのまま維持するのが正しい挙動です。
+                                                    // 古い calculateReminderValue() を呼ぶと、DBの古い日時と比較して
+                                                    // "None" にリセットされてしまうため、ここでは何もしません。
                                                 }
                                             });
                                         } else { 
                                             this.pickerEndInstance.setDate(this.localEndDate, false);
                                         }
                                     },
-                                    
-                                    calculateReminderValue() {
-                                        const endDate = this.localEndDate ? new Date(this.localEndDate) : null;
-                                        // $castsにより ISO 8601 形式 (Z付き) で来る reminder_at を Date オブジェクトに
-                                        const reminderDate = this.selectedCardData.reminder_at ? new Date(this.selectedCardData.reminder_at) : null;
-
-                                        if (!endDate || !reminderDate) {
-                                            this.localReminder = "none";
-                                            return;
-                                        }
-
-                                        // 差を分で計算 (ローカルタイムゾーン同士の差)
-                                        const diffMinutes = Math.round((endDate.getTime() - reminderDate.getTime()) / 60000);
-
-                                        if (diffMinutes === 10) { this.localReminder = "10_minutes_before"; }
-                                        else if (diffMinutes === 60) { this.localReminder = "1_hour_before"; }
-                                        else if (diffMinutes === 1440) { this.localReminder = "1_day_before"; }
-                                        else { this.localReminder = "none"; }
-                                    }
+                                    // calculateReminderValue は不要になったため削除
+                                   
                                 }' 
                                 class="relative w-auto"
                                 {{-- ★ 追加: open の状態変化を親に通知 --}}
@@ -601,7 +591,8 @@
                                             </div>
                                             <div x-show="localEndDate">
                                                 <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Reminder</label>
-                                                <select x-model="localReminder"
+                                                {{-- ★ 4. x-model を popoverReminder に変更 --}}
+                                                <select x-model="popoverReminder"
                                                         class="mt-1 block w-full text-sm rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-blue-500 focus:border-blue-500">
                                                     <option value="none">None</option>
                                                     <option value="10_minutes_before">10 minutes before</option>
@@ -616,7 +607,7 @@
                                                         card: selectedCardData, 
                                                         startDate: localStartDate, 
                                                         endDate: localEndDate,
-                                                        reminder: localReminder,
+                                                        reminder: popoverReminder,
                                                         callback: () => open = false 
                                                     })"
                                                     class="w-full px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700">

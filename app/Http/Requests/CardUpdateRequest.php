@@ -103,4 +103,43 @@ class CardUpdateRequest extends FormRequest
             'board_list_id' => 'sometimes|required|integer|exists:lists,id',
         ];
     }
+
+    /**
+     * バリデーション直後の追加チェック (全体整合性)
+     */
+    public function withValidator($validator)
+    {
+        $validator->after(function ($validator) {
+            // ルートパラメータから現在のモデルを取得
+            $card = $this->route('card');
+            
+            // バリデーション済みのデータを取得 (バリデーションエラーがない場合のみ)
+            // ※ $this->input() を使うと、バリデーション前の生データになるため注意
+            
+            // 「入力値」があればそれを、なければ「DBの現在値」を採用して比較用変数を作る
+            $startVal = $this->has('start_date') ? $this->input('start_date') : $card->start_date;
+            $endVal   = $this->has('end_date')   ? $this->input('end_date')   : $card->end_date;
+            $remindVal= $this->has('reminder_at')? $this->input('reminder_at'): $card->reminder_at;
+
+            // Carbonインスタンス化 (nullならnull)
+            $start = $startVal ? Carbon::parse($startVal) : null;
+            $end   = $endVal   ? Carbon::parse($endVal)   : null;
+            $remind= $remindVal? Carbon::parse($remindVal): null;
+
+            // 1. 終了日は開始日より後
+            if ($start && $end && $end->lt($start)) {
+                $validator->errors()->add('end_date', 'The due date must be after or equal to the start date.');
+            }
+
+            // 2. リマインダーは期限より前
+            if ($remind && $end && $remind->gt($end)) {
+                $validator->errors()->add('reminder_at', 'The reminder cannot be set after the due date.');
+            }
+
+            // 3. リマインダーがあるなら期限も必須
+            if ($remind && !$end) {
+                $validator->errors()->add('reminder_at', 'A due date is required to set a reminder.');
+            }
+        });
+    }
 }
