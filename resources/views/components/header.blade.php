@@ -11,28 +11,37 @@
             {{-- 右側：アイコン群 --}}
             <div class="flex items-center space-x-4">
 
-                {{-- ▼▼▼ このトグルボタンを追加 ▼▼▼ --}}
-                <button id="theme-toggle-button" class="text-gray-400 hover:text-indigo-600">
-                    <svg id="theme-toggle-dark-icon" class="h-6 w-6 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path></svg>
-                    <svg id="theme-toggle-light-icon" class="h-6 w-6 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m8.66-15.66l-.707.707M4.05 19.95l-.707.707M21 12h-1M4 12H3m15.66 8.66l-.707-.707M4.05 4.05l-.707-.707M12 18a6 6 0 100-12 6 6 0 000 12z"></path></svg>
-                </button>
-                {{-- ▲▲▲ 追加ここまで ▲▲▲ --}}
+                {{-- 1. テーマ切替ボタン --}}
+                <div class="relative group">
+                    <button id="theme-toggle-button" class="text-gray-400 hover:text-indigo-600">
+                        <svg id="theme-toggle-dark-icon" class="h-6 w-6 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path></svg>
+                        <svg id="theme-toggle-light-icon" class="h-6 w-6 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m8.66-15.66l-.707.707M4.05 19.95l-.707.707M21 12h-1M4 12H3m15.66 8.66l-.707-.707M4.05 4.05l-.707-.707M12 18a6 6 0 100-12 6 6 0 000 12z"></path></svg>
+                    </button>
+                    {{-- Tooltip --}}
+                    <div class="absolute top-full mt-2 left-1/2 transform -translate-x-1/2 px-2 py-1 bg-indigo-800 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-50 whitespace-nowrap">
+                        Toggle Theme
+                    </div>
+                </div>
 
                 {{-- 通知アイコン --}}
-                <div class="relative" id="notification-component">
+                <div class="relative group" id="notification-component">
                     <button id="notification-button" class="text-gray-400 hover:text-gray-600">
                         <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path></svg>
                     </button>
                     {{-- ★ 修正: バッジを常に出力し、 'display: none' で隠す --}}
                     {{-- (JavaScript の updateBadge() が表示/非表示を制御する) --}}
                     <span id="notification-badge" class="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-xs text-white" style="display: none;"></span>
+                    {{-- Tooltip --}}
+                    <div class="absolute top-full mt-2 left-1/2 transform -translate-x-1/2 px-2 py-1 bg-indigo-800 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-50 whitespace-nowrap">
+                        Notifications
+                    </div>
                     <div id="notification-dropdown" class="absolute right-0 mt-2 w-80 bg-white rounded-md shadow-lg z-50 hidden">
                         {{-- 中身はJavaScriptで生成 --}}
                     </div>
                 </div>
 
                 {{-- ユーザーメニュー --}}
-                <div class="relative" id="user-menu-component">
+                <div class="relative group" id="user-menu-component">
                     <button id="user-menu-button" class="flex text-sm border-2 border-transparent rounded-full focus:outline-none focus:border-gray-300 transition">
                         {{-- ★★★ ここから修正 ★★★ --}}
                         {{-- 1. Str::startsWith() で厳密にチェック --}}
@@ -54,6 +63,12 @@
                         @endif
                         {{-- ★★★ 修正ここまで ★★★ --}}
                     </button>
+
+                    {{-- Tooltip --}}
+                    <div class="absolute top-full mt-2 right-0 px-2 py-1 bg-indigo-800 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-50 whitespace-nowrap">
+                        User Menu
+                    </div>
+
                     <div id="user-menu-dropdown" class="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-50 hidden">
                         <a href="{{ route('profile.edit') }}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">{{ __('Profile') }}</a>
                         <form method="POST" action="{{ route('logout') }}">

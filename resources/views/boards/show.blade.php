@@ -2246,46 +2246,69 @@
             });
         ">
         {{-- (1) カンバンボード専用ヘッダー (変更なし) --}}
-        <div class="bg-white dark:bg-gray-800 shadow-md">
+        <div class="bg-white dark:bg-gray-800 shadow-md z-10 relative">
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                {{-- ▼▼▼ 1段目: タイトル・PC用ビュー切替・右側ツール ▼▼▼ --}}
                 <div class="flex items-center justify-between h-16">
+                    {{-- 左側: タイトル & (PC用)ビュー切替 --}}
                     <div class="flex items-center space-x-4">
-                        <h1 class="text-2xl font-bold text-gray-800 dark:text-gray-200">{{ $board->title }}</h1>
-                        {{-- ★ [NEW] ビュー切替ボタン --}}
-                        <div class="flex items-center space-x-1 p-1 bg-gray-200 dark:bg-gray-700 rounded-md">
+                        <h1 class="text-2xl font-bold text-gray-800 dark:text-gray-200">
+                            {{ $board->title }}
+                        </h1>
+                        {{-- ★ PC用ビュー切替 (md以上で表示) --}}
+                        <div class="hidden md:flex items-center space-x-1 p-1 bg-gray-200 dark:bg-gray-700 rounded-md">
                             {{-- 1. ボード（カンバン）ビュー --}}
-                            <button @click="viewMode = 'board'"
-                                    :class="{
-                                        'bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-100 shadow': viewMode === 'board',
-                                        'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200': viewMode !== 'board'
-                                    }"
-                                    class="px-3 py-1 text-sm font-medium rounded-md transition-colors">
-                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v12a2 2 0 01-2 2h-2a2 2 0 01-2-2V6z"></path></svg>
-                            </button>
+                            <div class="relative group">
+                                <button @click="viewMode = 'board'"
+                                        :class="{
+                                            'bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-100 shadow': viewMode === 'board',
+                                            'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200': viewMode !== 'board'
+                                        }"
+                                        class="px-3 py-1 text-sm font-medium rounded-md transition-colors">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v12a2 2 0 01-2 2h-2a2 2 0 01-2-2V6z"></path></svg>
+                                </button>
+                                {{-- Tooltip --}}
+                                <div class="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 px-2 py-1 bg-indigo-800 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-50 whitespace-nowrap">
+                                    Kanban Board
+                                </div>
+                            </div>
                             {{-- 2. カレンダービュー --}}
-                            <button @click="viewMode = 'calendar'"
-                                    :class="{
-                                        'bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-100 shadow': viewMode === 'calendar',
-                                        'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200': viewMode !== 'calendar'
-                                    }"
-                                    class="px-3 py-1 text-sm font-medium rounded-md transition-colors">
-                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
-                            </button>
+                            <div class="relative group">
+                                <button @click="viewMode = 'calendar'"
+                                        :class="{
+                                            'bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-100 shadow': viewMode === 'calendar',
+                                            'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200': viewMode !== 'calendar'
+                                        }"
+                                        class="px-3 py-1 text-sm font-medium rounded-md transition-colors">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                                </button>
+                                {{-- Tooltip --}}
+                                <div class="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 px-2 py-1 bg-indigo-800 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-50 whitespace-nowrap">
+                                    Calendar
+                                </div>
+                            </div>
                             {{-- ★ 3. [NEW] タイムラインビュー (timeGrid) --}}
-                            <button @click="viewMode = 'timeline'"
-                                    :class="{
-                                        'bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-100 shadow': viewMode === 'timeline',
-                                        'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200': viewMode !== 'timeline'
-                                    }"
-                                    class="px-3 py-1 text-sm font-medium rounded-md transition-colors">
-                                {{-- (時計のアイコン) --}}
-                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                            </button>
+                            <div class="relative group">
+                                <button @click="viewMode = 'timeline'"
+                                        :class="{
+                                            'bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-100 shadow': viewMode === 'timeline',
+                                            'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200': viewMode !== 'timeline'
+                                        }"
+                                        class="px-3 py-1 text-sm font-medium rounded-md transition-colors">
+                                    {{-- (時計のアイコン) --}}
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                </button>
+                                {{-- Tooltip --}}
+                                <div class="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 px-2 py-1 bg-indigo-800 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-50 whitespace-nowrap">
+                                    Timeline
+                                </div>
+                            </div>
                         </div>
                     </div>
 
-                    <div class="flex items-center space-x-4">
-                        <div class="flex -space-x-2">
+                    {{-- 右側: メンバー・フィルター・招待 --}}
+                    <div class="flex items-center space-x-4 sm:space-x-4">
+                        <div class="flex -space-x-2 overflow-hidden">
                             {{-- ★ 1. @php use ... @endphp は削除 --}}
 
                             @foreach ($board->users->take(4) as $member)
@@ -2324,12 +2347,16 @@
                             @endif
                         </div>
                         {{-- ★ [NEW] フィルター・ポップオーバー --}}
-                        <div x-data="{ open: false }" class="relative">
+                        <div x-data="{ open: false }" class="relative group">
                             {{-- 1. フィルター・ボタン本体 --}}
                             <button @click="open = !open" 
                                     class="text-gray-400 hover:text-gray-600 dark:hover:text-white p-2 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
                                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"></path></svg>
                             </button>
+                            {{-- Tooltip (ポップオーバーと被らないよう位置調整が必要な場合あり) --}}
+                            <div class="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 px-2 py-1 bg-indigo-800 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-50 whitespace-nowrap"> 
+                                Filter
+                            </div>
                             
                             {{-- 2. ポップオーバー本体 --}}
                             <div x-show="open"
@@ -2470,11 +2497,46 @@
                                 </div>
                             </div>
                         </div>
-                        {{-- ★ 修正: @click で open-invite-modal イベントを発火 --}}
-                        <x-primary-button @click.prevent="showInviteModal = true">
-                            <svg class="w-4 h-4 me-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"></path></svg>
-                            Invite
-                        </x-primary-button>
+                        {{-- 5. 招待ボタン --}}
+                        <div class="relative group">
+                            <button @click.prevent="showInviteModal = true"
+                                    type="button"
+                                    class="inline-flex items-center justify-center bg-indigo-600 border border-transparent font-semibold text-xs text-white uppercase tracking-widest hover:bg-indigo-500 focus:bg-indigo-500 active:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition ease-in-out duration-150
+                                           w-8 h-8 p-0 rounded-full          {{-- スマホ: 丸ボタン (幅32px, 余白なし, 完全な円) --}}
+                                           sm:w-auto sm:px-4 sm:py-2 sm:rounded-md {{-- PC: 通常ボタン (幅自動, 余白あり, 角丸) --}}">
+                                
+                                {{-- アイコン --}}
+                                <svg class="w-4 h-4 sm:me-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"></path></svg>
+                                
+                                {{-- テキスト (PCのみ) --}}
+                                <span class="hidden sm:inline">Invite</span>
+                            </button>
+                            
+                            {{-- Tooltip --}}
+                            <div class="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 px-2 py-1 bg-indigo-600 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-50 whitespace-nowrap">
+                                Invite Members
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {{-- ▼▼▼ 2段目: スマホ用ビュー切替 (md:hidden) ▼▼▼ --}}
+                <div class="pb-3 md:hidden">
+                    <div class="flex p-1 bg-gray-200 dark:bg-gray-700 rounded-md">
+                        <button @click="viewMode = 'board'"
+                                :class="{ 'bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-100 shadow': viewMode === 'board', 'text-gray-500 dark:text-gray-400': viewMode !== 'board' }"
+                                class="flex-1 py-1.5 text-xs font-medium rounded-md text-center transition-colors">
+                            Board
+                        </button>
+                        <button @click="viewMode = 'calendar'"
+                                :class="{ 'bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-100 shadow': viewMode === 'calendar', 'text-gray-500 dark:text-gray-400': viewMode !== 'calendar' }"
+                                class="flex-1 py-1.5 text-xs font-medium rounded-md text-center transition-colors">
+                            Calendar
+                        </button>
+                        <button @click="viewMode = 'timeline'"
+                                :class="{ 'bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-100 shadow': viewMode === 'timeline', 'text-gray-500 dark:text-gray-400': viewMode !== 'timeline' }"
+                                class="flex-1 py-1.5 text-xs font-medium rounded-md text-center transition-colors">
+                            Timeline
+                        </button>
                     </div>
                 </div>
             </div>

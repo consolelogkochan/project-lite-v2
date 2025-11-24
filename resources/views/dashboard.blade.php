@@ -19,7 +19,8 @@
             </div>
 
             {{-- ▼▼▼ ボード一覧グリッド（次のステップで中身を実装） ▼▼▼ --}}
-            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+            {{-- デフォルトで2列(grid-cols-2)、隙間は少し狭く(gap-4)。タブレット以上で3列・4列に --}}
+            <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
                 {{-- ▼▼▼ ループ処理を修正 ▼▼▼ --}}
                 @foreach ($boards as $board)
                     {{-- ★ 1. リンク(a) を div (relative, group) に変更 --}}

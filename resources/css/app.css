@@ -56,3 +56,87 @@
     margin-bottom: 2px;
 }
 /* ★★★ 調整ここまで ★★★ */
+
+/* ★★★ ここから FullCalendar レスポンシブ調整 (新規追加) ★★★ */
+
+/* === モバイル用スタイル (デフォルト) === */
+
+/* 1. ヘッダーツールバー (タイトル、ボタン) の調整 */
+.fc .fc-toolbar {
+    flex-direction: column; /* スマホは縦並びに */
+    gap: 0.5rem;
+    margin-bottom: 1rem !important;
+}
+
+/* タイトル文字サイズを縮小 */
+.fc .fc-toolbar-title {
+    font-size: 1.25rem !important; /* Tailwind 'text-xl' 相当 */
+}
+
+/* ボタン (today, arrows) のサイズ縮小 */
+.fc .fc-button {
+    padding: 0.25rem 0.5rem !important; /* パディングを小さく */
+    font-size: 0.75rem !important;     /* 文字サイズを小さく (text-xs) */
+    line-height: 1.2 !important;
+}
+
+/* 矢印アイコン (< >) のサイズ調整 */
+.fc .fc-button .fc-icon {
+    font-size: 1rem !important; 
+}
+
+/* 2. カレンダー/タイムラインの日付ヘッダー (Mon 11/24 など) */
+.fc .fc-col-header-cell-cushion {
+    font-size: 0.7rem !important; /* 文字をかなり小さく */
+    padding: 2px 0 !important;    /* 左右の余白を削る */
+    
+    /* タイムラインビューなどで文字が溢れる場合の改行設定 */
+    word-wrap: break-word !important;
+    white-space: normal !important; 
+    line-height: 1.1 !important;
+    display: inline-block !important;
+}
+
+/* 3. タイムライン(timeGrid)の時間軸文字 (9am, 10am...) */
+.fc .fc-timegrid-axis-cushion,
+.fc .fc-timegrid-slot-label-cushion {
+    font-size: 0.65rem !important; /* 時間文字を小さく */
+    padding: 0 2px !important;
+}
+
+
+/* === タブレット・PC用スタイル (sm: 640px以上) === */
+/* 画面幅が広がったら、デフォルト(大きめ)のサイズに戻す */
+@media (min-width: 640px) {
+    /* ヘッダーを横並びに戻す */
+    .fc .fc-toolbar {
+        flex-direction: row;
+        align-items: center;
+        gap: 0;
+    }
+    
+    .fc .fc-toolbar-title {
+        font-size: 1.5rem !important; /* text-2xl */
+    }
+    
+    .fc .fc-button {
+        padding: 0.4em 0.65em !important;
+        font-size: 1em !important;
+    }
+    
+    .fc .fc-button .fc-icon {
+        font-size: 1.5em !important;
+    }
+    
+    .fc .fc-col-header-cell-cushion {
+        font-size: 0.875rem !important; /* text-sm */
+        padding: 4px !important;
+        white-space: nowrap !important; /* PCでは折り返さない */
+    }
+    
+    .fc .fc-timegrid-axis-cushion,
+    .fc .fc-timegrid-slot-label-cushion {
+        font-size: 0.85rem !important;
+    }
+}
+/* ★★★ FullCalendar レスポンシブ調整ここまで ★★★ */

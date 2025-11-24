@@ -71,13 +71,16 @@
             <div class="px-6 py-4 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
                 <div class="flex items-center justify-between">
                     {{-- ヘッダー左側 (リスト名) --}}
-                    <div>
-                        {{-- (アイコンは後で追加) --}}
-                        <p class="text-sm text-gray-500 dark:text-gray-400">
-                            In list 
-                            {{-- selectedCardData がロードされてから .list.title を参照する --}}
-                            <span x-text="selectedCardData ? selectedCardData.list.title : '...'" class="font-medium underline"></span>
-                        </p>
+                    <div class="flex items-center mt-1">
+                        {{-- "in list" ラベル --}}
+                        <span class="text-sm text-gray-500 dark:text-gray-400 mr-2">
+                            In list
+                        </span>
+
+                        {{-- リスト名 (バッジスタイル) --}}
+                        <span x-text="selectedCardData ? selectedCardData.list.title : '...'" 
+                              class="inline-flex items-center px-2.5 py-0.5 rounded-md text-sm font-bold bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 border border-gray-200 dark:border-gray-600 shadow-sm">
+                        </span>
                     </div>
 
                     {{-- ヘッダー右側 (閉じるボタン) --}}
