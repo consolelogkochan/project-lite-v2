@@ -16,6 +16,7 @@ use App\Http\Controllers\ChecklistItemController;
 use App\Http\Controllers\AttachmentController;
 use App\Http\Controllers\BoardInvitationController;
 use App\Http\Controllers\CardAssignmentController;
+use App\Http\Controllers\AdminController;
 
 /*
 |--------------------------------------------------------------------------
@@ -153,5 +154,11 @@ Route::middleware('auth')->group(function () {
     });
 });
 // === 認証ルートここまで ===
+
+// 管理者用ルートグループ
+Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(function () {
+    Route::get('/dashboard', [AdminController::class, 'index'])->name('dashboard');
+    Route::post('/invitation/generate', [AdminController::class, 'generateInvitationCode'])->name('invitation.generate');
+});
 
 require __DIR__.'/auth.php';

@@ -34,6 +34,7 @@ class User extends Authenticatable
         'notify_on_card_move',
         'notify_on_card_created', // ★ 追加
         'notify_on_card_deleted', // ★ 追加
+        'is_admin',
     ];
 
     /**
@@ -62,6 +63,7 @@ class User extends Authenticatable
             'notify_on_card_move' => 'boolean',
             'notify_on_card_created' => 'boolean', // ★ 追加
             'notify_on_card_deleted' => 'boolean', // ★ 追加
+            'is_admin' => 'boolean',
         ];
     }
 
@@ -128,5 +130,11 @@ class User extends Authenticatable
     {
         // 'card_user' 中間テーブルを経由
         return $this->belongsToMany(Card::class, 'card_user');
+    }
+
+    // ★ 追加: このユーザーが登録に使用した招待コード
+    public function invitationCode()
+    {
+        return $this->hasOne(InvitationCode::class);
     }
 }

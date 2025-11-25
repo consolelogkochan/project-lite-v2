@@ -18,5 +18,17 @@ class InvitationCode extends Model
         'code',
         'expires_at',
         'is_used',
+        'user_id',
     ];
+
+    protected $casts = [
+        'expires_at' => 'datetime',
+        'is_used' => 'boolean',
+    ];
+
+    // このコードを使用したユーザー
+    public function user()
+    {
+        return $this->belongsTo(User::class);
+    }
 }

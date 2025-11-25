@@ -66,7 +66,11 @@ class RegisteredUserController extends Controller
         ]);
 
         // 招待コードを使用済みに更新
-        $invitationCode->update(['is_used' => true]);
+        // ★ 修正: 招待コードを使用済みにし、ユーザーIDを紐付ける
+        $invitationCode->update([
+            'is_used' => true,
+            'user_id' => $user->id, // ★ これを追加
+        ]);
 
         event(new Registered($user));
 

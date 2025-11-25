@@ -71,6 +71,18 @@
 
                     <div id="user-menu-dropdown" class="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-50 hidden">
                         <a href="{{ route('profile.edit') }}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">{{ __('Profile') }}</a>
+
+                        {{-- ★★★ [NEW] 管理者ダッシュボードへのリンク ★★★ --}}
+                        {{-- is_admin が true のユーザーにのみ表示 --}}
+                        @if (Auth::user()->is_admin)
+                            <a href="{{ route('admin.dashboard') }}" class="block px-4 py-2 text-sm text-purple-700 font-semibold hover:bg-gray-100">
+                                {{ __('Admin Dashboard') }}
+                            </a>
+                            {{-- 区切り線 --}}
+                            <div class="border-t border-gray-100 my-1"></div>
+                        @endif
+                        {{-- ★★★ 追加ここまで ★★★ --}}
+                        
                         <form method="POST" action="{{ route('logout') }}">
                             @csrf
                             <a href="{{ route('logout') }}" onclick="event.preventDefault(); this.closest('form').submit();" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">{{ __('Log Out') }}</a>
