@@ -26,7 +26,10 @@ class AttachmentStoreRequest extends FormRequest
                 'required',
                 'file',
                 'max:10240', // 10MB
-                // 必要なら mimes を追加
+                // ★ 追加: 許可する拡張子のホワイトリスト
+                // 画像, PDF, Office文書, テキストのみ許可
+                // (php, exe, sh, svg などを弾くことで、サーバー攻撃やXSSを防ぐ)
+                'mimes:jpg,jpeg,png,gif,webp,pdf,doc,docx,xls,xlsx,ppt,pptx,txt,csv',
             ],
         ];
     }

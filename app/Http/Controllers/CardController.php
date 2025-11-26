@@ -82,6 +82,20 @@ class CardController extends Controller
 
         // ★ Validator::make ブロックをすべて削除
 
+        // バリデーション済みデータを取得
+        $validated = $request->validated();
+
+        // ★★★ 追加: リマインダーのリセット判定 ★★★
+        // 期限(end_date) または リマインダー(reminder_at) が更新された場合、
+        // 送信済みフラグ(reminder_sent) を false に戻して、再通知できるようにする。
+        if (
+            ($request->has('end_date') && $validated['end_date'] !== $card->end_date) ||
+            ($request->has('reminder_at') && $validated['reminder_at'] !== $card->reminder_at)
+        ) {
+            $validated['reminder_sent'] = false;
+        }
+        // ★★★ 追加ここまで ★★★
+
         // データを更新
         // ★ validated() を使うと、バリデーション済みのデータだけが取得できるのでより安全です
         $card->update($request->validated());
