@@ -57,6 +57,8 @@
             calendarInstance: null,
             timelineInstance: null, // ★ 1. [NEW] タイムラインのインスタンスを保持
             localReminder: "none",
+            // ★ 追加: カレンダー読み込み中フラグ
+            isLoadingCalendar: false,
             boardLabels: [],
             boardMembers: [], // ボードの全メンバーを保持する配列
             newListTitle: "",
@@ -1889,6 +1891,8 @@
                     },
 
                     events: (fetchInfo, successCallback, failureCallback) => {
+                        // ★ 追加: 読み込み開始
+                        this.isLoadingCalendar = true;
                         const url = new URL("{{ route("boards.calendarEvents", $board) }}");
                         
                         // ★ 1. [NEW] 全てのフィルターを URL に追加
@@ -1919,8 +1923,14 @@
                                 }
                                 return response.json();
                             })
-                            .then(data => successCallback(data))
+                            .then(data => {
+                                // ★ 追加: 読み込み完了 (成功)
+                                this.isLoadingCalendar = false;
+                                successCallback(data);
+                            })
                             .catch(error => {
+                                // ★ 追加: 読み込み完了 (失敗)
+                                this.isLoadingCalendar = false;
                                 console.error(error);
                                 alert(error.message);
                                 failureCallback(error);
@@ -1977,6 +1987,8 @@
                     },
 
                     events: (fetchInfo, successCallback, failureCallback) => {
+                        // ★ 追加: 読み込み開始
+                        this.isLoadingCalendar = true;
                         const url = new URL("{{ route("boards.calendarEvents", $board) }}");
                         
                         // ★ 1. [NEW] 全てのフィルターを URL に追加
@@ -2007,8 +2019,14 @@
                                 }
                                 return response.json();
                             })
-                            .then(data => successCallback(data))
+                            .then(data => {
+                                // ★ 追加: 読み込み完了
+                                this.isLoadingCalendar = false;
+                                successCallback(data);
+                            })
                             .catch(error => {
+                                // ★ 追加: 読み込み完了
+                                this.isLoadingCalendar = false;
                                 console.error(error);
                                 alert(error.message);
                                 failureCallback(error);
@@ -2762,30 +2780,41 @@
                 </div>
                 
             </div>
+            {{-- ★ コンテナ全体を relative にして、スピナーを中央配置できるようにする --}}
+            <div class="relative w-full h-full flex-grow overflow-hidden">
+                {{-- ★★★ ローディングスピナー (isLoadingCalendar が true の時だけ表示) ★★★ --}}
+                <div x-show="isLoadingCalendar" 
+                     class="absolute inset-0 z-50 flex items-center justify-center bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm">
+                    <svg class="animate-spin h-10 w-10 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                </div>
 
-            {{-- ★ 2. [MODIFIED] カレンダービュー用コンテナ --}}
-            <div x-show="viewMode === 'calendar'" x-cloak
-                 x-ref="calendarContainer" {{-- ★ 1. JSが参照するための名前 --}}
-                 
-                 {{-- ★ 2. 表示された時にカレンダーを初期化する --}}
-                 x-init="$watch('viewMode', (value) => {
-                    if (value === 'calendar') {
-                        // 少し待機しないとカレンダーのサイズ計算が失敗することがある
-                        setTimeout(() => initCalendar(), 50); 
-                    }
-                 })"
-                 class="w-full h-full bg-white dark:bg-gray-800 rounded-md shadow p-4"
-            >
-                 {{-- (TODOの <p> タグは削除) --}}
-            </div>
+                {{-- ★ 2. [MODIFIED] カレンダービュー用コンテナ --}}
+                <div x-show="viewMode === 'calendar'" x-cloak
+                    x-ref="calendarContainer" {{-- ★ 1. JSが参照するための名前 --}}
+                    
+                    {{-- ★ 2. 表示された時にカレンダーを初期化する --}}
+                    x-init="$watch('viewMode', (value) => {
+                        if (value === 'calendar') {
+                            // 少し待機しないとカレンダーのサイズ計算が失敗することがある
+                            setTimeout(() => initCalendar(), 50); 
+                        }
+                    })"
+                    class="w-full h-full bg-white dark:bg-gray-800 rounded-md shadow p-4"
+                >
+                    {{-- (TODOの <p> タグは削除) --}}
+                </div>
 
-            {{-- ★ [NEW] タイムラインビュー用コンテナ (timeGrid) --}}
-            <div x-show="viewMode === 'timeline'" x-cloak
-                 x-ref="timelineContainer" {{-- ★ 1. JSが参照するための名前 --}}
-                 class="w-full h-full bg-white dark:bg-gray-800 rounded-md shadow p-4"
-            >
-                {{-- (initTimeline がここに描画します) --}}
-            </div>            
+                {{-- ★ [NEW] タイムラインビュー用コンテナ (timeGrid) --}}
+                <div x-show="viewMode === 'timeline'" x-cloak
+                    x-ref="timelineContainer" {{-- ★ 1. JSが参照するための名前 --}}
+                    class="w-full h-full bg-white dark:bg-gray-800 rounded-md shadow p-4"
+                >
+                    {{-- (initTimeline がここに描画します) --}}
+                </div>   
+            </div>         
 
             {{-- ★ ここから追加: カード詳細モーダル --}}
             <x-card-detail-modal />
