@@ -47,7 +47,13 @@ class AttachmentController extends Controller
         $attachment->load('user');
 
         // ★ ここでイベントを発火
-        AttachmentUploaded::dispatch($attachment);
+        // ★★★ 修正箇所: メール送信エラーをキャッチして無視する ★★★
+        try {
+            AttachmentUploaded::dispatch($attachment);
+        } catch (\Exception $e) {
+            \Log::error('Attachment Notification Error: ' . $e->getMessage());
+        }
+        // ★★★ 修正ここまで ★★★
         
         // 201 Created でJSONを返す (file_url アクセサも自動で含まれる)
         return response()->json($attachment, 201);

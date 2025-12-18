@@ -39,8 +39,13 @@ class CommentController extends Controller
         $comment->load('user');
 
         // ★ 2. イベントを発火させる
-        //    (リスナー 'SendCommentNotification' がこれをキャッチする)
-        CommentPosted::dispatch($comment);
+        // ★★★ 修正箇所: メール送信エラーをキャッチして無視する ★★★
+        try {
+            CommentPosted::dispatch($comment);
+        } catch (\Exception $e) {
+            \Log::error('Comment Notification Error: ' . $e->getMessage());
+        }
+        // ★★★ 修正ここまで ★★★
 
         // 201 Created でJSONを返す
         return response()->json($comment, 201);

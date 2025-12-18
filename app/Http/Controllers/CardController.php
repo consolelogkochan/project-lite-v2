@@ -45,7 +45,15 @@ class CardController extends Controller
         // ★ イベント発火
         // (作成直後の $card には list がロードされていない場合があるためロードしておく)
         $card->setRelation('list', $list); 
-        CardCreated::dispatch($card, Auth::user());
+        
+        // ★★★ 修正箇所: メール送信エラーをキャッチして無視する ★★★
+        try {
+            CardCreated::dispatch($card, Auth::user());
+        } catch (\Exception $e) {
+            // エラーが発生してもログに残すだけで、処理は止めない
+            \Log::error('CardCreated Event Error: ' . $e->getMessage());
+        }
+        // ★★★ 修正ここまで ★★★
 
         // 作成したカードをJSONで返す (HTTPステータス 201G)
         return response()->json($card, 201);
@@ -123,7 +131,14 @@ class CardController extends Controller
 
         // ★ 3. ボードIDが取得できていればイベント発火
         if ($boardId) {
-            CardDeleted::dispatch($cardTitle, $listName, $boardId, $deleter);
+            // ★★★ 修正箇所: メール送信エラーをキャッチして無視する ★★★
+            try {
+                CardDeleted::dispatch($cardTitle, $listName, $boardId, $deleter);
+            } catch (\Exception $e) {
+                // エラーが発生してもログに残すだけで、処理は止めない
+                \Log::error('CardDeleted Event Error: ' . $e->getMessage());
+            }
+            // ★★★ 修正ここまで ★★★
         }
 
         // 成功したら、 204 (No Content) ステータスを返す
@@ -185,12 +200,19 @@ class CardController extends Controller
 
             // ★ コミット成功後、移動イベントを一括発火
             foreach ($movedCardsInfo as $info) {
-                CardMoved::dispatch(
-                    $info['card'],
-                    $info['from'],
-                    $info['to'],
-                    $info['mover']
-                );
+                // ★★★ 修正箇所: ここも try-catch で囲む ★★★
+                try {
+                    CardMoved::dispatch(
+                        $info['card'],
+                        $info['from'],
+                        $info['to'],
+                        $info['mover']
+                    );
+                } catch (\Exception $e) {
+                    // エラーログだけ残して、ループを止めない
+                    \Log::error('CardMoved Event Error: ' . $e->getMessage());
+                }
+                // ★★★ 修正ここまで ★★★
             }
 
             return response()->json(['message' => 'Card order updated successfully.']);
