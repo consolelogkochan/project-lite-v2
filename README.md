@@ -57,3 +57,24 @@ If you discover a security vulnerability within Laravel, please send an e-mail t
 ## License
 
 The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+
+# Project-Lite
+
+Manage your projects simply and fast.
+A lightweight task management tool combining Kanban, Calendar, and Timeline views.
+
+## 🔗 Live Demo
+[https://project-lite.ikshowcase.site](https://project-lite.ikshowcase.site)
+(Guest Login available via invitation code or demo account if provided)
+
+## ✨ Features
+- **Kanban Board:** Drag & Drop tasks with ease.
+- **Multi-Views:** Switch between Kanban, Calendar, and Timeline.
+- **Secure:** Invitation-only registration, Role-based access control.
+- **Responsive:** Optimized for Mobile and Desktop.
+
+## 🛠 Tech Stack
+- **Backend:** PHP 8.2, Laravel 11
+- **Frontend:** Blade, Tailwind CSS, Alpine.js
+- **Database:** MySQL
+- **Infrastructure:** Docker (Sail), Shared Hosting (Lolipop)
