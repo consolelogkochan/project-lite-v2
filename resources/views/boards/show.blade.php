@@ -297,68 +297,42 @@
             },
 
             handleCardSortEnd(detail) {
-                // detail = { cardId: "1", fromListId: "1", toListId: "2", newIndex: 0, oldIndex: 0 }
-
-                // 1. ローカルの Alpine.js データを即時更新 (UIの即時反映)
-
+                // 1. ローカルのデータ操作 (見た目を即時更新)
                 const fromList = this.lists.find(list => list.id == detail.fromListId);
                 const toList = this.lists.find(list => list.id == detail.toListId);
                 
-                if (!fromList || !toList) {
-                    console.error("Could not find source or destination list");
-                    return;
-                }
+                if (!fromList || !toList) return;
 
-                // 移動するカードのインデックスを oldIndex から特定
-                // (SortableJSが渡す cardId から探すほうが確実)
                 const cardIndex = fromList.cards.findIndex(card => card.id == detail.cardId);
+                if (cardIndex === -1) return;
 
-                if (cardIndex === -1) {
-                    console.error("Could not find card in source list");
-                    // D&Dライブラリとデータの不整合が起きた場合は、
-                    // サーバーからのデータで同期するためリロードを促す
-                    alert("An error occurred. Please reload the page.");
-                    return;
-                }
-
-                // fromList からカードを抜き取る
+                // 移動元から抜く
                 const [movedCard] = fromList.cards.splice(cardIndex, 1);
                 
-                // ★ 修正: toList.cards を丸ごと置き換える
+                // 移動先に挿入 (新しい配列を作成して代入)
                 let toItems = Array.from(toList.cards);
                 toItems.splice(detail.newIndex, 0, movedCard);
                 toList.cards = toItems;
 
-                // ★★★ ここから挿入 (強制再描画ロジック) ★★★
-                // SortableJSによるDOM変更とAlpineのリアクティビティを同期させる
-                
-                // 1. 現在の (splice後の) this.lists の完全なコピーを作成
-                let updatedLists = Array.from(this.lists);
-                
-                // 2. this.lists を一度リセットして、Alpineに「変更」を強制通知
-                this.lists = []; 
-                
-                // 3. $nextTick (DOM更新が完了した後) で、コピーした配列を再セット
-                this.$nextTick(() => {
-                    this.lists = updatedLists;
-                });
-                // ★★★ 挿入ここまで ★★★
+                // ★ポイント1: ここで this.lists = [] や updatedLists を使わない
+                // 現在の this.lists を展開して再代入することで、画面を消さずに更新を通知
+                this.lists = [...this.lists];
 
-                // 2. サーバーに新しい順序を送信 (API呼び出し)
-
-                // APIが要求する形式 [{id: 1, cards: [1, 2]}, {id: 2, cards: [3]}] にデータを整形
-                const listsPayload = updatedLists.map(list => {
+                // 2. サーバーへ送信
+                // ★ポイント2: ここで updatedLists ではなく this.lists を使う
+                const listsPayload = this.lists.map(list => {
                     return {
                         id: list.id,
-                        // 各リストの cards 配列から card の id だけを抽出
                         cards: list.cards.map(card => card.id) 
                     };
                 });
 
                 fetch("{{ route('cards.updateOrder') }}", { 
-                    method: "PATCH", 
+                    method: "POST", 
                     headers: {
                         "Content-Type": "application/json", 
+                        "Accept": "application/json",
+                        "X-Requested-With": "XMLHttpRequest",
                         "X-CSRF-TOKEN": document.querySelector("meta[name=\"csrf-token\"]").getAttribute("content")
                     },
                     body: JSON.stringify({
@@ -366,21 +340,11 @@
                     })
                 })
                 .then(response => {
-                    if (!response.ok) {
-                        throw new Error("Failed to update card order on server."); // "..."
-                    }
+                    if (!response.ok) return response.json().then(err => { throw err; });
                     return response.json();
                 })
-                .then(data => {
-                    // 成功 (特にUIでやることはないが、ログは残す)
-                    console.log("Card order updated successfully:", data.message);
-                })
-                .catch(error => {
-                    console.error("Error updating card order:", error); // "..."
-                    // ★ ユーザーにエラーを通知し、リロードを促す
-                    // （ローカルのUIとDBのデータが不整合になっている可能性が高いため）
-                    alert("An error occurred while saving the new order. Please reload the page to ensure data consistency.");
-                });
+                .then(data => console.log("Success:", data.message))
+                .catch(error => console.error("Error:", error));
             },
             // ★ カードD&D用メソッドここまで
 
