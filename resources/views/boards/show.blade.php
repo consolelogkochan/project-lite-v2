@@ -2533,7 +2533,7 @@
 
             {{-- ★ 1. [修正] カンバンボード (x-show を追加) --}}
             <div x-show="viewMode === 'board'"
-                 class="flex space-x-4 h-full" 
+                 class="flex space-x-4 h-full items-start" 
                  x-sortable @sortable-end.self="handleSortEnd($event.detail)">
                 {{-- ▼▼▼ PHPの@foreachをAlpine.jsの<template x-for>に変更 ▼▼▼ --}}
                 {{-- リストのループ --}}
