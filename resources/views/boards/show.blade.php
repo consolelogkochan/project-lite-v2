@@ -178,8 +178,10 @@
                 .then(newList => {
                     // ★ 修正: pushする前に cards 配列を初期化する
                     newList.cards = [];
-                    // ★ 修正: .push() の代わりに、新しい配列で置き換える
-                    this.lists = [...this.lists, newList];
+                    // ★★★ 修正: 全置換ではなく push を使う ★★★
+                    // これにより、既存のリスト(this.lists)の再描画を防ぎ、カード消失を防ぎます
+                    this.lists.push(newList); 
+                    
                     this.newListTitle = "";
                     this.addingList = false;
                 })
@@ -256,9 +258,11 @@
                 });
 
                 fetch("{{ route('lists.updateOrder') }}", {
-                    method: "PATCH",
+                    method: "POST",
                     headers: {
                         "Content-Type": "application/json",
+                        "Accept": "application/json",
+                        "X-Requested-With": "XMLHttpRequest",
                         "X-CSRF-TOKEN": document.querySelector("meta[name=\"csrf-token\"]").getAttribute("content")
                     },
                     body: JSON.stringify({

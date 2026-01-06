@@ -24,7 +24,8 @@ class CardOrderRequest extends FormRequest
         return [
             'lists' => 'required|array',
             'lists.*.id' => 'required|integer|exists:lists,id',
-            'lists.*.cards' => 'required|array',
+            // ★ "present" は「データとして送信されていれば、中身が空([])でもOK」という意味です
+            'lists.*.cards' => 'present|array',
             'lists.*.cards.*' => 'required|integer|exists:cards,id',
         ];
     }

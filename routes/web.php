@@ -62,8 +62,10 @@ Route::middleware('auth')->group(function () {
     Route::post('/lists/{list}/cards', [CardController::class, 'store'])->name('cards.store');
     
     // カードのD&D（順序・所属リスト）を更新
+    // URLを 'cards' 階層から出して、POSTメソッドにする
+    Route::post('/update-card-order', [CardController::class, 'updateOrder'])->name('cards.updateOrder');
     // (ワイルドカード {card} よりも「上」に定義する)
-    Route::patch('/cards/update-order', [CardController::class, 'updateOrder'])->name('cards.updateOrder');
+    // Route::patch('/cards/update-order', [CardController::class, 'updateOrder'])->name('cards.updateOrder');
 
     // カードの更新と削除 (ワイルドカード)
     Route::patch('/cards/{card}', [CardController::class, 'update'])->name('cards.update');
