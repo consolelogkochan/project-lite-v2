@@ -297,35 +297,59 @@
             },
 
             handleCardSortEnd(detail) {
-                // 1. ローカルのデータ操作 (見た目を即時更新)
+                // 1. 【強化】あらゆる場所のスクロール位置をメモする
+                // コンテナ（横スクロール用）
+                const container = document.getElementById("board-container");
+                const containerX = container ? container.scrollLeft : 0;
+                const containerY = container ? container.scrollTop : 0;
+                
+                // ページ全体（縦スクロール用）
+                const windowX = window.scrollX;
+                const windowY = window.scrollY;
+
+                // --- データ操作ロジック (変更なし) ---
                 const fromList = this.lists.find(list => list.id == detail.fromListId);
                 const toList = this.lists.find(list => list.id == detail.toListId);
-                
                 if (!fromList || !toList) return;
-
                 const cardIndex = fromList.cards.findIndex(card => card.id == detail.cardId);
                 if (cardIndex === -1) return;
-
-                // 移動元から抜く
                 const [movedCard] = fromList.cards.splice(cardIndex, 1);
-                
-                // 移動先に挿入 (新しい配列を作成して代入)
                 let toItems = Array.from(toList.cards);
                 toItems.splice(detail.newIndex, 0, movedCard);
                 toList.cards = toItems;
 
-                // ★ポイント1: ここで this.lists = [] や updatedLists を使わない
-                // 現在の this.lists を展開して再代入することで、画面を消さずに更新を通知
-                this.lists = [...this.lists];
+                // --- 再描画 & スクロール復元 ---
 
-                // 2. サーバーへ送信
-                // ★ポイント2: ここで updatedLists ではなく this.lists を使う
-                const listsPayload = this.lists.map(list => {
-                    return {
-                        id: list.id,
-                        cards: list.cards.map(card => card.id) 
-                    };
+                // 2. データのコピーを作成
+                let updatedLists = Array.from(this.lists);
+
+                // 3. 一旦空にする (画面が一瞬消える)
+                this.lists = [];
+
+                // 4. 再描画後に位置を戻す
+                this.$nextTick(() => {
+                    // データを戻す
+                    this.lists = updatedLists;
+
+                    // ★★★ ここが修正ポイント ★★★
+                    // $nextTick の中ではなく、setTimeout で「10ミリ秒」待つ
+                    // これによりブラウザが完全に絵を描き終わるのを待ちます
+                    setTimeout(() => {
+                        // コンテナのスクロールを復元
+                        if (container) {
+                            container.scrollLeft = containerX;
+                            container.scrollTop = containerY;
+                        }
+                        // ページ全体のスクロールも復元
+                        window.scrollTo(windowX, windowY);
+                    }, 10); 
                 });
+
+                // --- サーバー送信 (変更なし) ---
+                const listsPayload = updatedLists.map(list => ({
+                    id: list.id,
+                    cards: list.cards.map(card => card.id) 
+                }));
 
                 fetch("{{ route('cards.updateOrder') }}", { 
                     method: "POST", 
@@ -335,16 +359,8 @@
                         "X-Requested-With": "XMLHttpRequest",
                         "X-CSRF-TOKEN": document.querySelector("meta[name=\"csrf-token\"]").getAttribute("content")
                     },
-                    body: JSON.stringify({
-                        lists: listsPayload 
-                    })
-                })
-                .then(response => {
-                    if (!response.ok) return response.json().then(err => { throw err; });
-                    return response.json();
-                })
-                .then(data => console.log("Success:", data.message))
-                .catch(error => console.error("Error:", error));
+                    body: JSON.stringify({ lists: listsPayload })
+                }).catch(error => console.error("Error:", error));
             },
             // ★ カードD&D用メソッドここまで
 
@@ -2529,7 +2545,7 @@
         </div>
 
         {{-- (2) カンバンボード本体 --}}
-        <div class="p-4 sm:p-6 lg:p-8 h-full flex-grow overflow-x-auto">
+        <div id="board-container" class="p-4 sm:p-6 lg:p-8 h-full flex-grow overflow-x-auto">
 
             {{-- ★ 1. [修正] カンバンボード (x-show を追加) --}}
             <div x-show="viewMode === 'board'"

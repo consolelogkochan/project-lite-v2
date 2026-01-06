@@ -17,6 +17,18 @@ Alpine.directive('sortable', (el, { expression }, { evaluate }) => {
 
     // SortableJSを初期化
     Sortable.create(el, {
+
+        // ★★★ ここから追加・修正 ★★★
+        
+        // 1. 文字入力やクリック操作をドラッグと誤判定させないための設定
+        filter: 'input, textarea, button, select, [contenteditable]', // これらのタグの上ではドラッグを開始しない
+        preventOnFilter: false, // 除外したタグでの「文字入力」や「クリック」を有効にする（これがないと入力できなくなります）
+        
+        // 2. 「クリックした瞬間にドラッグ開始」ではなく「5px動かしたら開始」にする（感度調整）
+        fallbackTolerance: 5, 
+
+        // ★★★ 追加ここまで ★★★
+
         ...options,
 
         // ▼▼▼ ここを修正 ▼▼▼
